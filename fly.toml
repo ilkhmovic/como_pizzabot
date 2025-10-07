@@ -1,0 +1,17 @@
+app = "como_pizzabot"
+primary_region = "maa"
+
+# ... (boshqa mavjud sozlamalar)
+
+[env]
+  # Agar .env fayl ishlatilsa, kerakli o'zgaruvchilarni qo'shing
+  # MASALAN: BOT_TOKEN = "..."
+
+# HTTP/Webhook sozlamalarini to'liq olib tashlash/o'chirish
+# Yoki mavjud bo'lsa, uni Polling uchun qoldiring.
+
+# Polling botlari uchun zarur bo'lgan minimal konfiguratsiya:
+# Agar bu qism mavjud bo'lmasa, tashlab yuboring.
+# Agar mavjud bo'lsa, health check (salomatlik tekshiruvi) ni o'chiring.
+# [http_service] qismini butunlay olib tashlash eng xavfsiz yo'l (Polling bot uchun).
+# Agar main.py da webhook ishlatilgan bo'lsa, bu qism kerak bo'ladi va 8080 porti ochilishi kerak.
