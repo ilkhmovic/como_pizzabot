@@ -16,7 +16,7 @@ from keyboards import get_main_keyboard, get_text
 
 # --- CLICK.UZ KONFIGURATSIYASI ---
 BOT_TOKEN = "8201136862:AAH91yLSxrTbpO2LSNZ1lu40BivDVTsQWQ4"
-WEBHOOK_HOST = 'https://eed86fb83a81.ngrok-free.app'
+WEBHOOK_HOST = 'comopizzabot-production.up.railway.app '
 WEBHOOK_PATH = '/webhook'
 WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
 
@@ -219,4 +219,5 @@ async def main():
     await asyncio.Event().wait() 
 
 if __name__ == "__main__":
+
     asyncio.run(main())
