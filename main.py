@@ -211,7 +211,7 @@ async def main():
     
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', 8000)
+    site = web.TCPSite(runner, '0.0.0.0', 10000)
     await site.start()
     
     print("Server started on port 8000")
@@ -221,5 +221,6 @@ async def main():
 if __name__ == "__main__":
 
     asyncio.run(main())
+
 
 
