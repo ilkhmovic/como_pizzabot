@@ -3,6 +3,7 @@ import logging
 import os
 import requests
 import json
+from decimal import Decimal, ROUND_HALF_UP
 from aiogram import Bot, Dispatcher, types
 from aiohttp import web
 from hashlib import md5
@@ -94,18 +95,32 @@ def check_click_request(request_data: dict, action: str) -> bool:
 
         # Amount ni Decimal yordamida qat'iy 0.00 formatda shakllantirish
         try:
-            raw_amount = request_data.get('amount', '0').strip()
+            raw_amount = str(request_data.get('amount', '0')).strip()
+            logger.info(f"🟡 RAW AMOUNT: {raw_amount}")
             amount = str(Decimal(raw_amount).quantize(Decimal('0.00'), rounding=ROUND_HALF_UP))
+            logger.info(f"🟡 FORMATTED AMOUNT: {amount}")
         except Exception as e:
             logger.error(f"🔴 AMOUNT FORMAT XATOSI: {e} | Kelgan qiymat: {request_data.get('amount')}")
             return False
 
+        # action param chaqiriq sifatida 'prepare' yoki 'complete' keladi
+        # Click esa action maydonida '0' yoki '1' yuboradi — shunga moslang
+        if action == 'prepare':
+            expected_action = '0'
+        else:
+            expected_action = '1'
+
         action_str = str(request_data.get('action', '')).strip()
+        if action_str != expected_action:
+            logger.error(f"🔴 ACTION NOMUVOFIQ: Keldi={action_str}, Kutilgan={expected_action}")
+            # return False  # Agar siz testing paytida action mismatchdan o'tkazmoqchi bo'lsangiz, bu qatordagi returnni koment qiling
+            return False
+
         sign_time = str(request_data.get('sign_time', '')).strip()
 
         merchant_prepare_id = ''
         if action == 'complete':
-            merchant_prepare_id = str(request_data.get('merchant_prepare_id', '')).strip()
+            merchant_prepare_id = str(request_data.get('merchant_prepare_id', '')).strip() or ''
 
         # Logga maydonlarni chiqaramiz
         logger.info(
@@ -139,7 +154,11 @@ def check_click_request(request_data: dict, action: str) -> bool:
 
         # --- MD5 imzo yaratish va solishtirish ---
         generated_sign = md5(data_string.encode('utf-8')).hexdigest()
-        received_sign = str(request_data.get('sign_string', '')).strip()
+
+        # received_sign uchun bir nechta variantni tekshiramiz (moslashuvchan)
+        received_sign = str(
+            request_data.get('sign_string') or request_data.get('sign') or request_data.get('signature') or ''
+        ).strip()
 
         logger.info(f"🟡 SIGNATURE: Generated={generated_sign}, Received={received_sign}")
 
@@ -447,12 +466,10 @@ async def main():
    
     logger.info(f"✅ Server {PORT}-portda ishga tushdi")
     logger.info("🍕 COMO PIZZA BOT tayyor va ishga tushdi!")
-    logger.info("💳 Click integrasiyasi faollashtirildi!")
+    logger.info("💳 Click integratsiyasi faollashtirildi!")
    
     # Server doimiy ishlashi
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
     asyncio.run(main())
-
-
