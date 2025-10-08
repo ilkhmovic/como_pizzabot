@@ -22,7 +22,7 @@ WEBHOOK_HOST = os.environ.get("WEBHOOK_HOST", "https://como-pizzabot1.onrender.c
 WEBHOOK_PATH = '/webhook'
 WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
 
-# Click sozlamalari
+# Click sozlamalari  4krNcqcYdfSpGD
 SECRET_KEY = '4krNcqcYdfSpGD'  # Click tizimidan olingan maxfiy kalit
 SERVICE_ID = '83881'
 MERCHANT_ID = '46627'
@@ -420,3 +420,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
