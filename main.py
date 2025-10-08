@@ -94,16 +94,17 @@ def check_click_request(request_data: dict, action: str) -> bool:
         click_trans_id = str(request_data.get('click_trans_id', ''))
         merchant_trans_id = str(request_data.get('merchant_trans_id', ''))
         amount = str(request_data.get('amount', ''))
-        action_str = str(request_data.get('action', ''))  # So'rovdan kelgan action ni olish
+        action_str = str(request_data.get('action', ''))
         sign_time = str(request_data.get('sign_time', ''))
+        error = str(request_data.get('error', ''))
         
         if action == 'prepare':
             # PREPARE uchun formula
             data_string = f"{click_trans_id}{SERVICE_ID}{SECRET_KEY}{merchant_trans_id}{amount}{action_str}{sign_time}"
         elif action == 'complete':
-            # COMPLETE uchun formula - merchant_prepare_id ham qo'shiladi
+            # COMPLETE uchun formula - merchant_prepare_id va error ham qo'shiladi
             merchant_prepare_id = str(request_data.get('merchant_prepare_id', ''))
-            data_string = f"{click_trans_id}{SERVICE_ID}{SECRET_KEY}{merchant_trans_id}{amount}{action_str}{sign_time}{merchant_prepare_id}"
+            data_string = f"{click_trans_id}{SERVICE_ID}{SECRET_KEY}{merchant_trans_id}{amount}{action_str}{sign_time}{merchant_prepare_id}{error}"
         else:
             return False
             
