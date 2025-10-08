@@ -103,7 +103,7 @@ LANGUAGES = {
         'PAYMENT_SUCCESS': "✅ Buyurtma №{order_id} uchun to'lov **muvaffaqiyatli** amalga oshirildi! Buyurtmangiz tez orada yetkaziladi\\.",
         'PAYMENT_CANCELLED': "❌ Buyurtma №{order_id} uchun to'lov **bekor** qilindi yoki amalga oshirilmadi\\. Qaytadan buyurtma bering\\.",
         'ORDER_STATUS': "Holati",
-        'CLICK_PAYMENT_MESSAGE': "🧾 Buyurtma №{order_id} \\({total} UZS\\) uchun Click orqali to'lovni amalga oshirish uchun quyidagi havoladan foydalaning\\. To'lov tasdiqlangach sizga xabar yuboriladi\\.",
+        'CLICK_PAYMENT_MESSAGE': "🧾 Buyurtma №{order_id} ({total} UZS) uchun Click orqali to'lovni amalga oshirish uchun quyidagi tugmadan foydalaning. To'lov tasdiqlangach sizga xabar yuboriladi va chek fiskalizatsiya qilinadi.",
         'YOUR_ORDERS': "Sizning buyurtmalaringiz",
         'BACK_MESSAGE': "Orqaga qaytish",
         'INVALID_PAYMENT_CHOICE': "Noto'g'ri to'lov turi tanlandi",
@@ -299,4 +299,5 @@ def get_product_inline_keyboard(product_name, current_quantity=1):
             types.InlineKeyboardButton(text="🛒 Savatga solish", callback_data=f"add_to_cart_{product_name}")
         ]
     ]
+
     return types.InlineKeyboardMarkup(inline_keyboard=kb)
