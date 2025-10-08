@@ -111,7 +111,9 @@ LANGUAGES = {
         'CHOOSE_PAYMENT': "To'lov turini tanlang:",
         'ORDER_REVIEW': "Buyurtmangizni ko'rib chiqing:\n{order_list}\nTo'lov turi: {payment_type}\nYetkazib berish: {delivery_fee} UZS\nJami: {total_price} UZS",
         'currency': "UZS",
-        'order_summary_title': "Buyurtma xulosasi"
+        'order_summary_title': "Buyurtma xulosasi",
+        'PAYME_NOT_AVAILABLE': "Payme hozircha mavjud emas.",
+        'INVALID_CHOICE_TRY_AGAIN': 'Noto\'g\'ri tanlov, iltimos qayta urinib ko\'ring.',
     },
     'ru': {
         'ORDER_BUTTON': "🛍️ Сделать заказ",
@@ -192,7 +194,9 @@ LANGUAGES = {
         'CHOOSE_PAYMENT': "Выберите тип оплаты:",
         'ORDER_REVIEW': "Проверьте ваш заказ:\n{order_list}\nТип оплаты: {payment_type}\nДоставка: {delivery_fee} UZS\nИтого: {total_price} UZS",
         'currency': "UZS",
-        'order_summary_title': "Сводка заказа"
+        'order_summary_title': "Сводка заказа",
+        'PAYME_NOT_AVAILABLE': 'Payme пока недоступен.',
+        'INVALID_CHOICE_TRY_AGAIN': 'Неверный выбор, пожалуйста, попробуйте снова.',
     }
 }
 
@@ -301,4 +305,5 @@ def get_product_inline_keyboard(product_name, current_quantity=1):
     ]
 
     return types.InlineKeyboardMarkup(inline_keyboard=kb)
+
 
