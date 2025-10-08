@@ -545,30 +545,31 @@ async def process_payment_choice_or_confirm(message: types.Message, state: FSMCo
     # ---------------- 1. CLICK TO'LOV MANTIQI ----------------
     if text == get_text(user_lang, 'PAYMENT_CLICK'):
         
+        # Buyurtmani "Pending" holatida saqlash
         order_id = save_order(
             user_id=user_id, 
             total_price=final_total, 
             cart_items=cart_items, 
             payment_type='Click',
             user_first_name=user_first_name,
-            status='Pending'
+            status='Pending'  # To'lov kutilayotgan holat
         )
         
+        # Click to'lov havolasini yaratish
         click_url = (
             "https://my.click.uz/services/pay"
             f"?service_id={SERVICE_ID}"
             f"&merchant_id={MERCHANT_ID}"
             f"&amount={int(final_total)}"
             f"&transaction_param={order_id}"
-            f"&return_url={WEBHOOK_HOST}"
-            f"&merchant_trans_id={order_id}"
+            f"&return_url={WEBHOOK_HOST}/click/complete"
         )
         
         keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
             [types.InlineKeyboardButton(text=get_text(user_lang, 'PAYMENT_CLICK'), url=click_url)]
         ])
         
-        # HTML formatida yuborish - bu eng oddiy usul
+        # HTML formatida yuborish
         click_message = get_text(user_lang, 'CLICK_PAYMENT_MESSAGE').format(
             order_id=order_id, 
             total=int(final_total)
@@ -577,7 +578,7 @@ async def process_payment_choice_or_confirm(message: types.Message, state: FSMCo
         await message.answer(
             click_message, 
             reply_markup=keyboard,
-            parse_mode='HTML'  # MarkdownV2 o'rniga HTML
+            parse_mode='HTML'
         )
         
         # Adminlarga xabar yuborish
@@ -827,4 +828,5 @@ async def handle_unknown_messages(message: types.Message):
     await message.answer(
         "Noto'g'ri buyruq. Iltimos, menyudan tugmalardan foydalaning.",
         reply_markup=get_main_keyboard(user_lang)
+
     )
