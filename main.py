@@ -141,6 +141,8 @@ def check_click_request(request_data: dict, action: str) -> bool:
             return False
 
         logger.info(f"🟡 DATA STRING: {data_string}")
+        logger.info(f"🟡 COMPLETE SIGN CHECK: merchant_prepare_id (kelgan) = {merchant_prepare_id}")
+
 
         # --- MD5 imzo yaratish va solishtirish ---
         generated_sign = md5(data_string.encode('utf-8')).hexdigest()
@@ -463,5 +465,6 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
 
 
