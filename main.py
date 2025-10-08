@@ -170,9 +170,10 @@ def check_click_request(request_data: dict, action: str) -> bool:
             for mp in mp_list:
                 # Data stringni Click hujjatiga moslab yig'amiz
                 if act == '1':
-                    data_string = f"{click_trans_id}{svc}{SECRET_KEY}{merchant_trans_id}{amt}{act}{sign_time}{mp}"
+                    data_string = f"{click_trans_id}{svc}{SECRET_KEY}{merchant_trans_id}{mp}{amt}{act}{sign_time}"
                 else:
                     data_string = f"{click_trans_id}{svc}{SECRET_KEY}{merchant_trans_id}{amt}{act}{sign_time}"
+
 
                 generated = md5(data_string.encode('utf-8')).hexdigest()
                 tried.append({
@@ -496,3 +497,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
