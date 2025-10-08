@@ -36,6 +36,7 @@ LANGUAGES = {
         'ORDER_BUTTON': "🛍️ Buyurtma berish",
         'MY_ORDERS_BUTTON': "📦 Mening buyurtmalarim",
         'ABOUT_US_BUTTON': "ℹ️ Biz haqimizda",
+        'ABOUT_US_MESSAGE': 'Como Pizza haqida',
         'FEEDBACK_BUTTON': "✍️ Izoh qoldirish",
         'SHARE_CONTACT_BUTTON': "📞 Telefon raqamni ulashish",
         'SHARE_LOCATION_BUTTON': "📍 Manzilni yuborish",
@@ -119,6 +120,7 @@ LANGUAGES = {
         'ORDER_BUTTON': "🛍️ Сделать заказ",
         'MY_ORDERS_BUTTON': "📦 Мои заказы",
         'ABOUT_US_BUTTON': "ℹ️ О нас",
+        'ABOUT_US_MESSAGE': 'О Como Pizza',
         'FEEDBACK_BUTTON': "✍️ Оставить отзыв",
         'SHARE_CONTACT_BUTTON': "📞 Поделиться номером",
         'SHARE_LOCATION_BUTTON': "📍 Отправить локацию",
@@ -305,5 +307,6 @@ def get_product_inline_keyboard(product_name, current_quantity=1):
     ]
 
     return types.InlineKeyboardMarkup(inline_keyboard=kb)
+
 
 
