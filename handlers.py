@@ -33,7 +33,7 @@ ADMINS = [7798312047, 7720794522]
 SERVICE_ID = '83881'
 MERCHANT_ID = '46627'
 SECRET_KEY = '4krNcqcYdfSpGD'
-WEBHOOK_HOST = 'https://edf47ac56aaf.ngrok-free.app'
+WEBHOOK_HOST = 'https://como-pizzabot1.onrender.com'  # O'z domainingizga o'zgartiring
 
 router = Router()
 
@@ -570,10 +570,7 @@ async def process_payment_choice_or_confirm(message: types.Message, state: FSMCo
         ])
         
         # HTML formatida yuborish
-        click_message = get_text(user_lang, 'CLICK_PAYMENT_MESSAGE').format(
-            order_id=order_id, 
-            total=int(final_total)
-        )
+        click_message = f"🧾 Buyurtma №{order_id} ({int(final_total)} UZS) uchun Click orqali to'lovni amalga oshirish uchun quyidagi tugmadan foydalaning. To'lov tasdiqlangach sizga xabar yuboriladi va chek fiskalizatsiya qilinadi."
         
         await message.answer(
             click_message, 
@@ -587,6 +584,49 @@ async def process_payment_choice_or_confirm(message: types.Message, state: FSMCo
         clear_cart(user_id) 
         await state.clear() 
         return
+
+    # ---------------- 2. CASH TO'LOV MANTIQI ----------------
+    elif text == get_text(user_lang, 'PAYMENT_CASH'):
+        # Naqd to'lov uchun buyurtmani saqlash
+        order_id = save_order(
+            user_id=user_id, 
+            total_price=final_total, 
+            cart_items=cart_items, 
+            payment_type='Naqd',
+            user_first_name=user_first_name,
+            status='New'
+        )
+        
+        # Adminlarga xabar yuborish
+        await send_admin_notification(bot, order_id, user_data, final_total, 'Naqd', 'New')
+        
+        clear_cart(user_id)
+        await message.answer(
+            get_text(user_lang, 'ORDER_CONFIRMED').format(order_id=order_id),
+            reply_markup=get_main_keyboard(user_lang)
+        )
+        await state.clear()
+        return
+
+    # ---------------- 3. PAYME TO'LOV MANTIQI ----------------
+    elif text == get_text(user_lang, 'PAYMENT_PAYME'):
+        # Payme uchun xabar (hozircha ishlamaydi)
+        await message.answer(
+            "Payme to'lov tizimi hozircha ishlamayapti. Iltimos, boshqa to'lov usulini tanlang.",
+            reply_markup=get_order_payment_keyboard(user_lang)
+        )
+        return
+
+    # ---------------- 4. ORQAGA TUGMASI ----------------
+    elif text == get_text(user_lang, 'BACK_BUTTON'):
+        await message.answer(
+            get_text(user_lang, 'MENU_MESSAGE'),
+            reply_markup=get_menu_keyboard(user_lang)
+        )
+        await state.set_state(OrderState.in_menu)
+        return
+        
+    await message.answer(get_text(user_lang, 'INVALID_CHOICE_TRY_AGAIN'))
 @router.message(OrderConfirmationState.confirming_order)
 async def handle_confirm_order_message(message: types.Message, state: FSMContext, bot: Bot):
     user_id = message.from_user.id
@@ -830,3 +870,4 @@ async def handle_unknown_messages(message: types.Message):
         reply_markup=get_main_keyboard(user_lang)
 
     )
+
