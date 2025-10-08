@@ -23,7 +23,7 @@ WEBHOOK_HOST = os.environ.get("WEBHOOK_HOST", "https://como-pizzabot1.onrender.c
 WEBHOOK_PATH = '/webhook'
 WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
 
-# Click sozlamalari  4krNcqcYdfSpGD
+# Click sozlamalari
 SECRET_KEY = '4krNcqcYdfSpGD'  # Click tizimidan olingan maxfiy kalit
 SERVICE_ID = '83881'
 MERCHANT_ID = '46627'
@@ -93,9 +93,17 @@ def check_click_request(request_data: dict, action: str) -> bool:
         click_trans_id = str(request_data.get('click_trans_id', '')).strip()
         merchant_trans_id = str(request_data.get('merchant_trans_id', '')).strip()
 
-        # Amount — Click qanday yuborsa, shundayligicha olamiz (formatlamaymiz)
-        amount = str(request_data.get('amount', '0')).strip()
-        logger.info(f"🟡 AMOUNT (NO FORMAT): {amount}")
+        # Amountni Click talabiga binoan har doim ikki kasr bilan formatlaymiz
+        # (Click sign hisobida ham ko'pincha 2 kasr ishlatiladi)
+        raw_amount = str(request_data.get('amount', '0')).strip()
+        try:
+            # float->format to ensure "1100" -> "1100.00" and "1100.0" -> "1100.00"
+            amount = "{:.2f}".format(float(raw_amount))
+        except Exception as e:
+            logger.error(f"🔴 AMOUNT FORMAT XATOSI: {e} | Kelgan qiymat: {raw_amount}")
+            return False
+
+        logger.info(f"🟡 AMOUNT (FORMATTED FOR SIGN): {amount}")
 
         # action parametri 'prepare' -> 0, 'complete' -> 1
         expected_action = '0' if action == 'prepare' else '1'
@@ -104,15 +112,15 @@ def check_click_request(request_data: dict, action: str) -> bool:
             logger.error(f"🔴 ACTION NOMUVOFIQ: Keldi={action_str}, Kutilgan={expected_action}")
             return False
 
-        # sign_time — kelgan ko‘rinishda
+        # sign_time — kelgan ko‘rinishda olinadi
         sign_time = str(request_data.get('sign_time', '')).strip()
 
-        # complete uchun merchant_prepare_id
+        # complete uchun merchant_prepare_id (faqat complete uchun qo'shiladi)
         merchant_prepare_id = ''
         if action == 'complete':
             merchant_prepare_id = str(request_data.get('merchant_prepare_id', '')).strip() or ''
 
-        # Logga chiqaramiz
+        # Logga chiqaramiz (diagnostika uchun)
         logger.info(
             f"🟡 Maydonlar:\n"
             f"  click_trans_id={click_trans_id}\n"
@@ -125,7 +133,7 @@ def check_click_request(request_data: dict, action: str) -> bool:
             f"  merchant_prepare_id={merchant_prepare_id}"
         )
 
-        # --- Data string yaratish ---
+        # --- Data string yaratish (Click hujjatlariga muvofiq, hech qanday qo'shimcha belgilar bilan emas) ---
         if action == 'prepare':
             data_string = (
                 f"{click_trans_id}{SERVICE_ID}{SECRET_KEY}"
@@ -142,7 +150,6 @@ def check_click_request(request_data: dict, action: str) -> bool:
 
         logger.info(f"🟡 DATA STRING: {data_string}")
         logger.info(f"🟡 COMPLETE SIGN CHECK: merchant_prepare_id (kelgan) = {merchant_prepare_id}")
-
 
         # --- MD5 imzo yaratish va solishtirish ---
         generated_sign = md5(data_string.encode('utf-8')).hexdigest()
@@ -465,6 +472,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
-
-
