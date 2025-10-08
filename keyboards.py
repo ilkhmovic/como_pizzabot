@@ -100,8 +100,8 @@ LANGUAGES = {
         'NO_LOCATION': "Geolokatsiya mavjud emas",
         'PAYMENT_LINK_MESSAGE': "To'lov havolasi:",
         'ERROR_MESSAGE': "Xatolik yuz berdi, qaytadan urinib ko'ring.",
-        'PAYMENT_SUCCESS': "✅ Buyurtma №{order_id} uchun to'lov **muvaffaqiyatli** amalga oshirildi! Buyurtmangiz tez orada yetkaziladi\\.",
-        'PAYMENT_CANCELLED': "❌ Buyurtma №{order_id} uchun to'lov **bekor** qilindi yoki amalga oshirilmadi\\. Qaytadan buyurtma bering\\.",
+        'PAYMENT_SUCCESS': "✅ Buyurtma №{order_id} uchun to'lov muvaffaqiyatli amalga oshirildi! Buyurtmangiz tez orada yetkaziladi.",
+        'PAYMENT_CANCELLED': "❌ Buyurtma №{order_id} uchun to'lov bekor qilindi yoki amalga oshirilmadi. Qaytadan buyurtma bering.",
         'ORDER_STATUS': "Holati",
         'CLICK_PAYMENT_MESSAGE': "🧾 Buyurtma №{order_id} ({total} UZS) uchun Click orqali to'lovni amalga oshirish uchun quyidagi tugmadan foydalaning. To'lov tasdiqlangach sizga xabar yuboriladi va chek fiskalizatsiya qilinadi.",
         'YOUR_ORDERS': "Sizning buyurtmalaringiz",
@@ -181,10 +181,10 @@ LANGUAGES = {
         'NO_LOCATION': "Геолокация отсутствует",
         'PAYMENT_LINK_MESSAGE': "Ссылка на оплату:",
         'ERROR_MESSAGE': "Произошла ошибка, попробуйте снова.",
-        'PAYMENT_SUCCESS': "✅ Оплата заказа №{order_id} **успешно** произведена! Ваш заказ скоро будет доставлен\\.",
-        'PAYMENT_CANCELLED': "❌ Оплата заказа №{order_id} **отменена** или не была завершена\\. Пожалуйста, оформите заказ заново\\.",
+        'PAYMENT_SUCCESS': "✅ Оплата заказа №{order_id} успешно произведена! Ваш заказ скоро будет доставлен.",
+        'PAYMENT_CANCELLED': "❌ Оплата заказа №{order_id} отменена или не была завершена. Пожалуйста, оформите заказ заново.",
         'ORDER_STATUS': "Статус",
-        'CLICK_PAYMENT_MESSAGE': "🧾 Для оплаты заказа №{order_id} \\({total} UZS\\) через Click используйте ссылку ниже\\. После подтверждения оплаты вы получите уведомление\\.",
+        'CLICK_PAYMENT_MESSAGE': "🧾 Для оплаты заказа №{order_id} ({total} UZS) через Click используйте кнопку ниже. После подтверждения оплаты вы получите уведомление и чек будет фискализирован.",
         'YOUR_ORDERS': "Ваши заказы",
         'BACK_MESSAGE': "Назад",
         'INVALID_PAYMENT_CHOICE': "Неверный тип оплаты",
@@ -301,3 +301,4 @@ def get_product_inline_keyboard(product_name, current_quantity=1):
     ]
 
     return types.InlineKeyboardMarkup(inline_keyboard=kb)
+
