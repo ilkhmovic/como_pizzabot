@@ -84,42 +84,76 @@ async def parse_click_data(request):
         return {}
 
 def check_click_request(request_data: dict, action: str) -> bool:
-    """Click so'rovining to'g'riligini (md5 hash) tekshiradi."""
+    """Click to'lov so'rovining imzosini (signature) tekshiradi."""
     try:
         logger.info(f"🟡 SIGNATURE TEKSHIRISH: {action}")
-       
-        # Ma'lumotlarni string ga o'tkazish
-        click_trans_id = str(request_data.get('click_trans_id', ''))
-        merchant_trans_id = str(request_data.get('merchant_trans_id', ''))
-        amount = "%.2f" % float(request_data.get('amount', '0'))  # 1100 -> 1100.00
-        action_str = str(request_data.get('action', ''))
-        sign_time = str(request_data.get('sign_time', ''))
-        merchant_prepare_id = str(request_data.get('merchant_prepare_id', '')) if action == 'complete' else ''
-       
-        # Har bir maydonni alohida log qilish
-        logger.info(f"🟡 Maydonlar: click_trans_id={click_trans_id}, service_id={SERVICE_ID}, secret_key={SECRET_KEY}, merchant_trans_id={merchant_trans_id}, amount={amount}, action={action_str}, sign_time={sign_time}, merchant_prepare_id={merchant_prepare_id}")
-       
+
+        # --- Ma'lumotlarni olish va formatlash ---
+        click_trans_id = str(request_data.get('click_trans_id', '')).strip()
+        merchant_trans_id = str(request_data.get('merchant_trans_id', '')).strip()
+
+        # Amount ni Decimal yordamida qat'iy 0.00 formatda shakllantirish
+        try:
+            raw_amount = request_data.get('amount', '0').strip()
+            amount = str(Decimal(raw_amount).quantize(Decimal('0.00'), rounding=ROUND_HALF_UP))
+        except Exception as e:
+            logger.error(f"🔴 AMOUNT FORMAT XATOSI: {e} | Kelgan qiymat: {request_data.get('amount')}")
+            return False
+
+        action_str = str(request_data.get('action', '')).strip()
+        sign_time = str(request_data.get('sign_time', '')).strip()
+
+        merchant_prepare_id = ''
+        if action == 'complete':
+            merchant_prepare_id = str(request_data.get('merchant_prepare_id', '')).strip()
+
+        # Logga maydonlarni chiqaramiz
+        logger.info(
+            f"🟡 Maydonlar:\n"
+            f"  click_trans_id={click_trans_id}\n"
+            f"  service_id={SERVICE_ID}\n"
+            f"  secret_key={SECRET_KEY}\n"
+            f"  merchant_trans_id={merchant_trans_id}\n"
+            f"  amount={amount}\n"
+            f"  action={action_str}\n"
+            f"  sign_time={sign_time}\n"
+            f"  merchant_prepare_id={merchant_prepare_id}"
+        )
+
+        # --- Data string yaratish ---
         if action == 'prepare':
-            # PREPARE uchun formula
-            data_string = f"{click_trans_id}{SERVICE_ID}{SECRET_KEY}{merchant_trans_id}{amount}{action_str}{sign_time}"
+            data_string = (
+                f"{click_trans_id}{SERVICE_ID}{SECRET_KEY}"
+                f"{merchant_trans_id}{amount}{action_str}{sign_time}"
+            )
         elif action == 'complete':
-            # COMPLETE uchun formula
-            data_string = f"{click_trans_id}{SERVICE_ID}{SECRET_KEY}{merchant_trans_id}{amount}{action_str}{sign_time}{merchant_prepare_id}"
+            data_string = (
+                f"{click_trans_id}{SERVICE_ID}{SECRET_KEY}"
+                f"{merchant_trans_id}{amount}{action_str}{sign_time}{merchant_prepare_id}"
+            )
         else:
             logger.error(f"🔴 NOMA'LUM ACTION: {action}")
             return False
-           
+
         logger.info(f"🟡 DATA STRING: {data_string}")
-       
+
+        # --- MD5 imzo yaratish va solishtirish ---
         generated_sign = md5(data_string.encode('utf-8')).hexdigest()
-        received_sign = str(request_data.get('sign_string', ''))
-       
+        received_sign = str(request_data.get('sign_string', '')).strip()
+
         logger.info(f"🟡 SIGNATURE: Generated={generated_sign}, Received={received_sign}")
-        logger.info(f"🟡 SIGNATURE MOS KELDI: {generated_sign == received_sign}")
-       
-        return generated_sign == received_sign
+
+        if generated_sign != received_sign:
+            logger.error("🔴 SIGNATURE MOS KELMADI ❌")
+            return False
+
+        logger.info("✅ SIGNATURE MOS KELDI ✅")
+        return True
+
     except Exception as e:
-        logger.error(f"🔴 SIGNATURE XATOSI: {e}")
+        logger.error(f"🔴 SIGNATURE TEKSHIRISHDA XATOLIK: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return False
 
 async def handle_click_prepare(request):
@@ -420,4 +454,5 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
 
