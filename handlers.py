@@ -201,15 +201,10 @@ async def handle_about_us(message: types.Message):
     about_text = (
         f"**{escape_markdown_v2(get_text(user_lang, 'ABOUT_US_BUTTON'))}**\n\n"
         f"{escape_markdown_v2(get_text(user_lang, 'ABOUT_US_MESSAGE'))}\n\n"
-        "🍕 *Como Pizza* - bu sizning sevimli taomlaringizni tez va qulay yetkazib beruvchi xizmat! "
-        "Biz yuqori sifatli ingredientlardan tayyorlangan mazali pitsalar va boshqa taomlarni taklif qilamiz. "
-        "Mijozlarimizning qulayligi va mamnunligi bizning ustuvor vazifamizdir. "
-        "Buyurtma bering va lazzatlaning! 😊"
-        if user_lang == 'uz' else
-        "🍕 *Como Pizza* - это сервис быстрой и удобной доставки ваших любимых блюд! "
-        "Мы предлагаем вкусные пиццы и другие блюда, приготовленные из высококачественных ингредиентов. "
-        "Комфорт и удовлетворенность наших клиентов - наш главный приоритет. "
-        "Заказывайте и наслаждайтесь! 😊"
+        f"{escape_markdown_v2('🍕 Como Pizza - bu sizning sevimli taomlaringizni tez va qulay yetkazib beruvchi xizmat! ' if user_lang == 'uz' else '🍕 Como Pizza - это сервис быстрой и удобной доставки ваших любимых блюд! ')}"
+        f"{escape_markdown_v2('Biz yuqori sifatli ingredientlardan tayyorlangan mazali pitsalar va boshqa taomlarni taklif qilamiz. ' if user_lang == 'uz' else 'Мы предлагаем вкусные пиццы и другие блюда, приготовленные из высококачественных ингредиентов. ')}"
+        f"{escape_markdown_v2('Mijozlarimizning qulayligi va mamnunligi bizning ustuvor vazifamizdir. ' if user_lang == 'uz' else 'Комфорт и удовлетворенность наших клиентов - наш главный приоритет. ')}"
+        f"{escape_markdown_v2('Buyurtma bering va lazzatlaning! 😊' if user_lang == 'uz' else 'Заказывайте и наслаждайтесь! 😊')}"
     )
     await message.answer(about_text, reply_markup=get_main_keyboard(user_lang), parse_mode="MarkdownV2")
 
@@ -877,6 +872,7 @@ async def handle_unknown_messages(message: types.Message):
         reply_markup=get_main_keyboard(user_lang)
 
     )
+
 
 
 
