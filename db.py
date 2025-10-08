@@ -251,17 +251,28 @@ def save_order(user_id, total_price, cart_items, payment_type, user_first_name="
     conn = get_connection()
     cursor = conn.cursor()
     created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    cursor.execute("INSERT INTO orders (user_id, total_price, created_at, status, payment_type, user_first_name) VALUES (?, ?, ?, ?, ?, ?)",
-                   (user_id, total_price, created_at, status, payment_type, user_first_name))
-    order_id = cursor.lastrowid
-    for item in cart_items:
-        product_name, quantity = item
-        price = get_product_price(product_name)
-        cursor.execute("INSERT INTO order_items (order_id, product_name, quantity, price) VALUES (?, ?, ?, ?)",
-                       (order_id, product_name, quantity, price))
-    conn.commit()
-    conn.close()
-    return order_id
+    
+    try:
+        cursor.execute("INSERT INTO orders (user_id, total_price, created_at, status, payment_type, user_first_name) VALUES (?, ?, ?, ?, ?, ?)",
+                       (user_id, total_price, created_at, status, payment_type, user_first_name))
+        order_id = cursor.lastrowid
+        
+        for item in cart_items:
+            product_name, quantity = item
+            price = get_product_price(product_name)
+            cursor.execute("INSERT INTO order_items (order_id, product_name, quantity, price) VALUES (?, ?, ?, ?)",
+                           (order_id, product_name, quantity, price))
+        
+        conn.commit()
+        logging.info(f"Buyurtma saqlandi: ID={order_id}, Status={status}, To'lov={payment_type}")
+        return order_id
+        
+    except Exception as e:
+        logging.error(f"Buyurtma saqlash xatosi: {e}")
+        conn.rollback()
+        return None
+    finally:
+        conn.close()
 
 def get_user_orders(user_id):
     conn = get_connection()
@@ -293,3 +304,4 @@ def update_order_status(order_id, status):
     cursor.execute("UPDATE orders SET status = ? WHERE order_id = ?", (status, order_id))
     conn.commit()
     conn.close()
+    logging.info(f"Buyurtma holati yangilandi: ID={order_id}, Yangi status={status}")
