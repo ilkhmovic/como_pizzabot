@@ -23,9 +23,10 @@ WEBHOOK_PATH = '/webhook'
 WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
 
 # Click sozlamalari
-SECRET_KEY = '4krNcqcYdfSpGD'  # O'zingizning maxfiy kalitingizni kiriting
+SECRET_KEY = '4krNcqcYdfSpGD'  # Click tizimidan olingan maxfiy kalit
 SERVICE_ID = '83881'
 MERCHANT_ID = '46627'
+MERCHANT_USER_ID = '65032'  # Yangi qo'shilgan
 ADMINS = [7798312047, 7720794522]
 
 # --- BOT VA DISPATCHER ---
@@ -90,18 +91,22 @@ def check_click_request(request_data: dict, action: str) -> bool:
         # Ma'lumotlarni string ga o'tkazish
         click_trans_id = str(request_data.get('click_trans_id', ''))
         merchant_trans_id = str(request_data.get('merchant_trans_id', ''))
-        amount = str(request_data.get('amount', ''))
+        amount = "%.2f" % float(request_data.get('amount', '0'))  # 1100 -> 1100.00
         action_str = str(request_data.get('action', ''))
         sign_time = str(request_data.get('sign_time', ''))
+        merchant_prepare_id = str(request_data.get('merchant_prepare_id', '')) if action == 'complete' else ''
+       
+        # Har bir maydonni alohida log qilish
+        logger.info(f"🟡 Maydonlar: click_trans_id={click_trans_id}, service_id={SERVICE_ID}, secret_key={SECRET_KEY}, merchant_trans_id={merchant_trans_id}, amount={amount}, action={action_str}, sign_time={sign_time}, merchant_prepare_id={merchant_prepare_id}")
        
         if action == 'prepare':
             # PREPARE uchun formula
             data_string = f"{click_trans_id}{SERVICE_ID}{SECRET_KEY}{merchant_trans_id}{amount}{action_str}{sign_time}"
         elif action == 'complete':
-            # COMPLETE uchun formula - merchant_prepare_id qo'shiladi, error olib tashlandi
-            merchant_prepare_id = str(request_data.get('merchant_prepare_id', ''))
+            # COMPLETE uchun formula
             data_string = f"{click_trans_id}{SERVICE_ID}{SECRET_KEY}{merchant_trans_id}{amount}{action_str}{sign_time}{merchant_prepare_id}"
         else:
+            logger.error(f"🔴 NOMA'LUM ACTION: {action}")
             return False
            
         logger.info(f"🟡 DATA STRING: {data_string}")
