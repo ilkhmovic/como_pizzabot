@@ -525,7 +525,8 @@ async def process_payment_choice_or_confirm(message: types.Message, state: FSMCo
     text = message.text
     data = await state.get_data()
     
-    final_total = data.get('final_total_price') 
+    # Check if cart and total price are valid
+    final_total = data.get('final_total_price')
     cart_items = get_cart_items(user_id)
     
     if final_total is None or not cart_items:
@@ -541,8 +542,9 @@ async def process_payment_choice_or_confirm(message: types.Message, state: FSMCo
     user_data = get_user_data(user_id)
     user_first_name = message.from_user.first_name
 
+    # Handle "Click" payment
     if text == get_text(user_lang, 'PAYMENT_CLICK'):
-        # Buyurtmani "Pending" holatida saqlash
+        # Save order with "Pending" status for Click payment
         order_id = save_order(
             user_id=user_id, 
             total_price=final_total, 
@@ -552,14 +554,14 @@ async def process_payment_choice_or_confirm(message: types.Message, state: FSMCo
             status='Pending'
         )
         
-        # MUHIM O'ZGARTIRISH: return_url ni to'g'ri sozlash
+        # Generate Click payment URL
         click_url = (
             "https://my.click.uz/services/pay"
             f"?service_id={SERVICE_ID}"
             f"&merchant_id={MERCHANT_ID}"
             f"&amount={int(final_total)}"
             f"&transaction_param={order_id}"
-            f"&return_url={WEBHOOK_HOST}"  # Faqat domain, /click/complete emas
+            f"&return_url={WEBHOOK_HOST}"
         )
         
         keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
@@ -575,9 +577,50 @@ async def process_payment_choice_or_confirm(message: types.Message, state: FSMCo
         
         await send_admin_notification(bot, order_id, user_data, final_total, 'Click', 'Pending')
         
-        clear_cart(user_id) 
-        await state.clear() 
+        clear_cart(user_id)
+        await state.clear()
         return
+
+    # Handle "Cash" (Naqd) payment
+    elif text == get_text(user_lang, 'PAYMENT_CASH'):
+        # Save order with "New" status for Cash payment
+        order_id = save_order(
+            user_id=user_id, 
+            total_price=final_total, 
+            cart_items=cart_items, 
+            payment_type='Cash',
+            user_first_name=user_first_name,
+            status='New'
+        )
+        
+        # Notify admins
+        await send_admin_notification(bot, order_id, user_data, final_total, 'Cash', 'New')
+        
+        # Clear cart and inform user
+        clear_cart(user_id)
+        await message.answer(
+            get_text(user_lang, 'ORDER_CONFIRMED').format(order_id=order_id),
+            reply_markup=get_main_keyboard(user_lang)
+        )
+        await state.clear()
+        return
+
+    # Handle "Payme" payment
+    elif text == get_text(user_lang, 'PAYMENT_PAYME'):
+        # Inform user that Payme is not available and return to payment selection
+        await message.answer(
+            get_text(user_lang, 'PAYME_NOT_AVAILABLE'),
+            reply_markup=get_order_payment_keyboard(user_lang)
+        )
+        await state.set_state(OrderConfirmationState.choosing_payment)
+        return
+
+    # Handle invalid payment choice
+    else:
+        await message.answer(
+            get_text(user_lang, 'INVALID_CHOICE_TRY_AGAIN'),
+            reply_markup=get_order_payment_keyboard(user_lang)
+        )
 @router.message(OrderConfirmationState.confirming_order)
 async def handle_confirm_order_message(message: types.Message, state: FSMContext, bot: Bot):
     user_id = message.from_user.id
@@ -821,5 +864,6 @@ async def handle_unknown_messages(message: types.Message):
         reply_markup=get_main_keyboard(user_lang)
 
     )
+
 
 
