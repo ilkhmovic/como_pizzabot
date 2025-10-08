@@ -94,7 +94,15 @@ def check_click_request(request_data: dict, action: str) -> bool:
         click_trans_id = str(request_data.get('click_trans_id', ''))
         merchant_trans_id = str(request_data.get('merchant_trans_id', ''))
         amount = str(request_data.get('amount', ''))
-        action_str = str(request_data.get('action', ''))
+        
+        # ACTION qiymatini to'g'ri olish
+        if action == 'prepare':
+            action_str = '0'  # Prepare uchun action=0
+        elif action == 'complete':
+            action_str = '1'  # Complete uchun action=1
+        else:
+            return False
+            
         sign_time = str(request_data.get('sign_time', ''))
         
         if action == 'prepare':
