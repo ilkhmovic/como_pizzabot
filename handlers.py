@@ -516,6 +516,8 @@ async def handle_confirm_order_callback(callback: types.CallbackQuery, state: FS
     )
     await state.set_state(OrderConfirmationState.choosing_payment)
 
+# handlers.py faylida Click to'lov qismini yangilang:
+
 @router.message(OrderConfirmationState.choosing_payment)
 async def process_payment_choice_or_confirm(message: types.Message, state: FSMContext, bot: Bot):
     user_id = message.from_user.id
@@ -526,25 +528,20 @@ async def process_payment_choice_or_confirm(message: types.Message, state: FSMCo
     final_total = data.get('final_total_price') 
     cart_items = get_cart_items(user_id)
     
-    # --- FALLBACK HISOB-KITOB ---
     if final_total is None or not cart_items:
         if cart_items:
             total_sum = sum(get_product_price(item[0]) * item[1] for item in cart_items)
             final_total = total_sum + DELIVERY_FEE
             await state.update_data(final_total_price=final_total)
         else:
-            logging.error(f"User {user_id} tried to checkout without final_total_price or cart items.")
             await message.answer(get_text(user_lang, 'CART_EMPTY'), reply_markup=get_main_keyboard(user_lang))
             await state.clear()
             return
             
-    # Foydalanuvchi ma'lumotlarini olish
     user_data = get_user_data(user_id)
     user_first_name = message.from_user.first_name
 
-    # ---------------- 1. CLICK TO'LOV MANTIQI ----------------
     if text == get_text(user_lang, 'PAYMENT_CLICK'):
-        
         # Buyurtmani "Pending" holatida saqlash
         order_id = save_order(
             user_id=user_id, 
@@ -552,81 +549,35 @@ async def process_payment_choice_or_confirm(message: types.Message, state: FSMCo
             cart_items=cart_items, 
             payment_type='Click',
             user_first_name=user_first_name,
-            status='Pending'  # To'lov kutilayotgan holat
+            status='Pending'
         )
         
-        # Click to'lov havolasini yaratish
+        # MUHIM O'ZGARTIRISH: return_url ni to'g'ri sozlash
         click_url = (
             "https://my.click.uz/services/pay"
             f"?service_id={SERVICE_ID}"
             f"&merchant_id={MERCHANT_ID}"
             f"&amount={int(final_total)}"
             f"&transaction_param={order_id}"
-            f"&return_url={WEBHOOK_HOST}/click/complete"
+            f"&return_url={WEBHOOK_HOST}"  # Faqat domain, /click/complete emas
         )
         
         keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
-            [types.InlineKeyboardButton(text=get_text(user_lang, 'PAYMENT_CLICK'), url=click_url)]
+            [types.InlineKeyboardButton(text="💳 Click orqali to'lash", url=click_url)]
         ])
         
-        # HTML formatida yuborish
-        click_message = f"🧾 Buyurtma №{order_id} ({int(final_total)} UZS) uchun Click orqali to'lovni amalga oshirish uchun quyidagi tugmadan foydalaning. To'lov tasdiqlangach sizga xabar yuboriladi va chek fiskalizatsiya qilinadi."
+        click_message = f"🧾 Buyurtma №{order_id} ({int(final_total)} UZS)\n\nTo'lov qilish uchun quyidagi tugmani bosing:"
         
         await message.answer(
             click_message, 
-            reply_markup=keyboard,
-            parse_mode='HTML'
+            reply_markup=keyboard
         )
         
-        # Adminlarga xabar yuborish
         await send_admin_notification(bot, order_id, user_data, final_total, 'Click', 'Pending')
         
         clear_cart(user_id) 
         await state.clear() 
         return
-
-    # ---------------- 2. CASH TO'LOV MANTIQI ----------------
-    elif text == get_text(user_lang, 'PAYMENT_CASH'):
-        # Naqd to'lov uchun buyurtmani saqlash
-        order_id = save_order(
-            user_id=user_id, 
-            total_price=final_total, 
-            cart_items=cart_items, 
-            payment_type='Naqd',
-            user_first_name=user_first_name,
-            status='New'
-        )
-        
-        # Adminlarga xabar yuborish
-        await send_admin_notification(bot, order_id, user_data, final_total, 'Naqd', 'New')
-        
-        clear_cart(user_id)
-        await message.answer(
-            get_text(user_lang, 'ORDER_CONFIRMED').format(order_id=order_id),
-            reply_markup=get_main_keyboard(user_lang)
-        )
-        await state.clear()
-        return
-
-    # ---------------- 3. PAYME TO'LOV MANTIQI ----------------
-    elif text == get_text(user_lang, 'PAYMENT_PAYME'):
-        # Payme uchun xabar (hozircha ishlamaydi)
-        await message.answer(
-            "Payme to'lov tizimi hozircha ishlamayapti. Iltimos, boshqa to'lov usulini tanlang.",
-            reply_markup=get_order_payment_keyboard(user_lang)
-        )
-        return
-
-    # ---------------- 4. ORQAGA TUGMASI ----------------
-    elif text == get_text(user_lang, 'BACK_BUTTON'):
-        await message.answer(
-            get_text(user_lang, 'MENU_MESSAGE'),
-            reply_markup=get_menu_keyboard(user_lang)
-        )
-        await state.set_state(OrderState.in_menu)
-        return
-        
-    await message.answer(get_text(user_lang, 'INVALID_CHOICE_TRY_AGAIN'))
 @router.message(OrderConfirmationState.confirming_order)
 async def handle_confirm_order_message(message: types.Message, state: FSMContext, bot: Bot):
     user_id = message.from_user.id
@@ -870,4 +821,5 @@ async def handle_unknown_messages(message: types.Message):
         reply_markup=get_main_keyboard(user_lang)
 
     )
+
 
