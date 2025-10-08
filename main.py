@@ -18,7 +18,7 @@ from db import (
 from keyboards import get_main_keyboard, get_text
 
 # --- KONFIGURATSIYA ---
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "8232907752:AAFpbBB9qRfcNtKIXotji6PMALwPXEhS3KA")
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "8201136862:AAH91yLSxrTbpO2LSNZ1lu40BivDVTsQWQ4")
 PORT = int(os.environ.get("PORT", 10000))
 WEBHOOK_HOST = os.environ.get("RAILWAY_STATIC_URL", "https://como-pizzabot1.onrender.com")
 
@@ -385,3 +385,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
