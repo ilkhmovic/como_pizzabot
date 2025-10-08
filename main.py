@@ -49,18 +49,15 @@ async def parse_click_data(request):
         content_type = request.headers.get('Content-Type', '').lower()
         
         if 'application/json' in content_type:
-            # JSON formatida
             data = await request.json()
             logger.info(f"🟡 JSON DATA QABUL QILINDI: {data}")
             return data
         elif 'application/x-www-form-urlencoded' in content_type:
-            # Form-data formatida
             post_data = await request.post()
             data = dict(post_data)
             logger.info(f"🟡 FORM-DATA QABUL QILINDI: {data}")
             return data
         else:
-            # Content-Type aniqlanmagan, har ikki usulda urinib ko'ramiz
             try:
                 data = await request.json()
                 logger.info(f"🟡 JSON (auto) QABUL QILINDI: {data}")
@@ -73,7 +70,6 @@ async def parse_click_data(request):
                     return data
                 except Exception as e:
                     logger.error(f"🔴 IKKALA USULDA HAM XATO: {e}")
-                    # Request body ni to'g'ridan-to'g'ri o'qib ko'ramiz
                     try:
                         body = await request.text()
                         logger.info(f"🟡 RAW BODY: {body}")
@@ -87,7 +83,6 @@ async def parse_click_data(request):
                 
     except Exception as e:
         logger.error(f"🔴 DATA PARSE XATOSI: {e}")
-        # Bo'sh data qaytaramiz
         return {}
 
 def check_click_request(request_data: dict, action: str) -> bool:
@@ -103,9 +98,12 @@ def check_click_request(request_data: dict, action: str) -> bool:
         sign_time = str(request_data.get('sign_time', ''))
         
         if action == 'prepare':
+            # PREPARE uchun formula
             data_string = f"{click_trans_id}{SERVICE_ID}{SECRET_KEY}{merchant_trans_id}{amount}{action_str}{sign_time}"
         elif action == 'complete':
-            data_string = f"{click_trans_id}{SERVICE_ID}{SECRET_KEY}{merchant_trans_id}{amount}{action_str}{sign_time}"
+            # COMPLETE uchun formula - merchant_prepare_id ham qo'shiladi
+            merchant_prepare_id = str(request_data.get('merchant_prepare_id', ''))
+            data_string = f"{click_trans_id}{SERVICE_ID}{SECRET_KEY}{merchant_trans_id}{amount}{action_str}{sign_time}{merchant_prepare_id}"
         else:
             return False
             
@@ -126,7 +124,6 @@ async def handle_click_prepare(request):
     """Click to'lovni tayyorlash (Prepare) so'rovini qayta ishlaydi."""
     try:
         logger.info(f"🟡 CLICK PREPARE SO'ROVI: Method={request.method}")
-        logger.info(f"🟡 HEADERS: {dict(request.headers)}")
         
         # Ma'lumotlarni parse qilish
         data = await parse_click_data(request)
@@ -223,7 +220,6 @@ async def handle_click_complete(request):
             query_params = dict(request.query)
             logger.info(f"🟡 GET SO'ROVI (return_url): {query_params}")
             
-            # Foydalanuvchiga oddiy xabar qaytaramiz
             html_response = """
             <html>
                 <head>
