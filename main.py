@@ -89,11 +89,12 @@ def check_click_request(request_data: dict, action: str) -> bool:
     try:
         logger.info(f"🟡 SIGNATURE TEKSHIRISH: {action}")
 
-        # --- Ma'lumotlarni olish va formatlash ---
+        # 1️⃣ Ma'lumotlarni olish
         click_trans_id = str(request_data.get('click_trans_id', '')).strip()
         merchant_trans_id = str(request_data.get('merchant_trans_id', '')).strip()
+        sign_time = str(request_data.get('sign_time', '')).strip()
 
-        # Amount ni Decimal yordamida qat'iy 0.00 formatda shakllantirish
+        # 2️⃣ Amount ni qat'iy 0.00 formatga keltirish
         try:
             raw_amount = str(request_data.get('amount', '0')).strip()
             logger.info(f"🟡 RAW AMOUNT: {raw_amount}")
@@ -103,26 +104,20 @@ def check_click_request(request_data: dict, action: str) -> bool:
             logger.error(f"🔴 AMOUNT FORMAT XATOSI: {e} | Kelgan qiymat: {request_data.get('amount')}")
             return False
 
-        # action param chaqiriq sifatida 'prepare' yoki 'complete' keladi
-        # Click esa action maydonida '0' yoki '1' yuboradi — shunga moslang
-        if action == 'prepare':
-            expected_action = '0'
-        else:
-            expected_action = '1'
-
+        # 3️⃣ Action mosligini tekshirish
+        expected_action = '0' if action == 'prepare' else '1'
         action_str = str(request_data.get('action', '')).strip()
+
         if action_str != expected_action:
             logger.error(f"🔴 ACTION NOMUVOFIQ: Keldi={action_str}, Kutilgan={expected_action}")
-            # return False  # Agar siz testing paytida action mismatchdan o'tkazmoqchi bo'lsangiz, bu qatordagi returnni koment qiling
             return False
 
-        sign_time = str(request_data.get('sign_time', '')).strip()
-
+        # 4️⃣ merchant_prepare_id faqat complete uchun
         merchant_prepare_id = ''
         if action == 'complete':
             merchant_prepare_id = str(request_data.get('merchant_prepare_id', '')).strip() or ''
 
-        # Logga maydonlarni chiqaramiz
+        # 5️⃣ Logga ma'lumotlarni chiqaramiz
         logger.info(
             f"🟡 Maydonlar:\n"
             f"  click_trans_id={click_trans_id}\n"
@@ -135,33 +130,44 @@ def check_click_request(request_data: dict, action: str) -> bool:
             f"  merchant_prepare_id={merchant_prepare_id}"
         )
 
-        # --- Data string yaratish ---
+        # 6️⃣ Click dokumentatsiyasiga ko'ra sign stringni to'g'ri yig'ish
         if action == 'prepare':
             data_string = (
-                f"{click_trans_id}{SERVICE_ID}{SECRET_KEY}"
-                f"{merchant_trans_id}{amount}{action_str}{sign_time}"
+                f"{click_trans_id}"
+                f"{SERVICE_ID}"
+                f"{SECRET_KEY}"
+                f"{merchant_trans_id}"
+                f"{amount}"
+                f"{action_str}"
+                f"{sign_time}"
             )
-        elif action == 'complete':
+        else:  # complete
             data_string = (
-                f"{click_trans_id}{SERVICE_ID}{SECRET_KEY}"
-                f"{merchant_trans_id}{amount}{action_str}{sign_time}{merchant_prepare_id}"
+                f"{click_trans_id}"
+                f"{SERVICE_ID}"
+                f"{SECRET_KEY}"
+                f"{merchant_trans_id}"
+                f"{amount}"
+                f"{action_str}"
+                f"{sign_time}"
+                f"{merchant_prepare_id}"
             )
-        else:
-            logger.error(f"🔴 NOMA'LUM ACTION: {action}")
-            return False
 
         logger.info(f"🟡 DATA STRING: {data_string}")
 
-        # --- MD5 imzo yaratish va solishtirish ---
+        # 7️⃣ MD5 imzo yaratish
         generated_sign = md5(data_string.encode('utf-8')).hexdigest()
 
-        # received_sign uchun bir nechta variantni tekshiramiz (moslashuvchan)
+        # 8️⃣ Click yuborgan imzoni olish (turli nomlar uchun moslashuvchan)
         received_sign = str(
-            request_data.get('sign_string') or request_data.get('sign') or request_data.get('signature') or ''
+            request_data.get('sign_string') or
+            request_data.get('sign') or
+            request_data.get('signature') or ''
         ).strip()
 
         logger.info(f"🟡 SIGNATURE: Generated={generated_sign}, Received={received_sign}")
 
+        # 9️⃣ Taqqoslash
         if generated_sign != received_sign:
             logger.error("🔴 SIGNATURE MOS KELMADI ❌")
             return False
@@ -473,3 +479,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
