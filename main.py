@@ -8,6 +8,7 @@ from aiohttp import web
 from hashlib import md5
 import re
 from datetime import datetime
+from urllib.parse import parse_qs
 
 from handlers import router
 from db import (
@@ -18,7 +19,7 @@ from keyboards import get_main_keyboard, get_text
 
 # --- KONFIGURATSIYA ---
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "8201136862:AAH91yLSxrTbpO2LSNZ1lu40BivDVTsQWQ4")
-PORT = int(os.environ.get("PORT", 10000))
+PORT = int(os.environ.get("PORT", 8000))
 WEBHOOK_HOST = os.environ.get("WEBHOOK_HOST", "https://como-pizzabot1.onrender.com")
 
 WEBHOOK_PATH = '/webhook'
@@ -38,123 +39,7 @@ dp.include_router(router)
 # Log sozlamalari
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# --- FISKALIZATSIYA FUNKSIYALARI ---
-async def fiscalize_receipt(order_id: int, amount: float, phone_number: str = "") -> dict:
-    """
-    Click fiskalizatsiya API orqali chek yaratadi
-    """
-    try:
-        # Buyurtma ma'lumotlarini olish
-        order_items = get_order_items_by_id(order_id)
-        if not order_items:
-            logging.error(f"Fiskalizatsiya: Buyurtma {order_id} uchun mahsulotlar topilmadi")
-            return {"success": False, "error": "No order items"}
-
-        # Fiskalizatsiya uchun mahsulotlar ro'yxatini tayyorlash
-        items = []
-        for item in order_items:
-            product_name, quantity, price = item
-            items.append({
-                "name": product_name,
-                "price": price,
-                "quantity": quantity,
-                "total": price * quantity,
-                "vat_percent": 15  # QQS 15%
-            })
-
-        # Fiskalizatsiya so'rovi uchun ma'lumotlar
-        fiscal_data = {
-            "service_id": int(SERVICE_ID),
-            "merchant_id": int(MERCHANT_ID),
-            "order_id": order_id,
-            "amount": amount,
-            "phone_number": phone_number or "998901234567",
-            "items": items,
-            "timestamp": datetime.now().isoformat()
-        }
-
-        # Click fiskalizatsiya API ga so'rov
-        response = requests.post(
-            "https://api.click.uz/v2/merchant/fiscal/receipt",
-            json=fiscal_data,
-            headers={
-                "Content-Type": "application/json",
-                "Auth": f"{MERCHANT_ID}:{SECRET_KEY}"
-            },
-            timeout=30
-        )
-
-        if response.status_code == 200:
-            result = response.json()
-            if result.get('status') == 0:  # 0 - muvaffaqiyatli
-                logging.info(f"Fiskalizatsiya muvaffaqiyatli: Order {order_id}, Receipt ID: {result.get('receipt_id')}")
-                return {"success": True, "receipt_id": result.get('receipt_id')}
-            else:
-                error_msg = result.get('error_msg', 'Noma lum xato')
-                logging.error(f"Fiskalizatsiya xatosi: {error_msg}")
-                return {"success": False, "error": error_msg}
-        else:
-            logging.error(f"Fiskalizatsiya HTTP xatosi: {response.status_code} - {response.text}")
-            return {"success": False, "error": f"HTTP {response.status_code}"}
-
-    except Exception as e:
-        logging.error(f"Fiskalizatsiya jarayonida xato: {e}")
-        return {"success": False, "error": str(e)}
-
-async def process_order_fiscalization(order_id: int):
-    """Buyurtma uchun fiskalizatsiyani amalga oshiradi"""
-    try:
-        order = get_order_by_id(order_id)
-        if not order:
-            logging.error(f"Fiskalizatsiya: Buyurtma {order_id} topilmadi")
-            return False
-
-        user_id = order[1]
-        amount = order[2]  # total_price
-        
-        # Foydalanuvchi ma'lumotlarini olish
-        user_data = get_user_data(user_id)
-        phone_number = user_data[1] if user_data and user_data[1] else ""
-
-        # Fiskalizatsiyani amalga oshirish
-        fiscal_result = await fiscalize_receipt(order_id, amount, phone_number)
-
-        # Adminlarga xabar berish
-        for admin_id in ADMINS:
-            if fiscal_result["success"]:
-                await bot.send_message(
-                    admin_id,
-                    f"Fiskalizatsiya muvaffaqiyatli:\n"
-                    f"Buyurtma: #{order_id}\n"
-                    f"Summa: {amount} UZS\n"
-                    f"Chek ID: {fiscal_result.get('receipt_id', 'Noma lum')}\n"
-                    f"Tel: {phone_number or 'Noma lum'}"
-                )
-            else:
-                await bot.send_message(
-                    admin_id,
-                    f"Fiskalizatsiya xatosi:\n"
-                    f"Buyurtma: #{order_id}\n"
-                    f"Summa: {amount} UZS\n"
-                    f"Xato: {fiscal_result.get('error', 'Noma lum')}\n"
-                    f"Iltimos, qo'lda fiskalizatsiya qiling!"
-                )
-
-        return fiscal_result["success"]
-
-    except Exception as e:
-        logging.error(f"Fiskalizatsiya jarayonida xato: {e}")
-        return False
-
 # --- CLICK YORDAMCHI FUNKSIYALARI ---
-def escape_markdown_v2(text):
-    """MarkdownV2 formatidagi maxsus belgilarni 'escape' qiladi."""
-    if text is None:
-        return ""
-    text = str(text)
-    escape_chars = r'_*[]()~`>#+ -=|{. !}'
-    return re.sub(f'([{re.escape(escape_chars)}])', r'\\\1', text)
-
 def check_click_request(request_data: dict, action: str) -> bool:
     """Click so'rovining to'g'riligini (md5 hash) tekshiradi."""
     try:
@@ -208,7 +93,7 @@ async def handle_click_prepare(request):
         logging.info(f"Bazadagi summa: {total_price}, Kelgan summa: {amount}")
         
         # Summa tekshirish
-        if abs(total_price - amount) > 1:  # 1 so'm farqga ruxsat
+        if abs(total_price - amount) > 1:
             logging.error(f"SUMMA MOS KELMAYDI: Bazada {total_price}, Kelgan {amount}")
             return web.json_response({
                 "error": -2, 
@@ -247,8 +132,20 @@ async def handle_click_prepare(request):
 async def handle_click_complete(request):
     """Click to'lovni yakunlash (Complete) so'rovini qayta ishlaydi."""
     try:
+        # GET so'rovini tekshirish (return_url uchun)
+        if request.method == 'GET':
+            query_params = dict(request.query)
+            logging.info(f"GET SO'ROVI QABUL QILINDI (return_url): {query_params}")
+            
+            # Foydalanuvchiga oddiy xabar qaytaramiz
+            return web.Response(
+                text="To'lov muvaffaqiyatli amalga oshirildi! Telegram botingizga qayting.",
+                content_type='text/html'
+            )
+        
+        # POST so'rovini qayta ishlash (Click serverdan)
         data = await request.json()
-        logging.info(f"CLICK COMPLETE SO'ROVI QABUL QILINDI")
+        logging.info(f"CLICK COMPLETE POST SO'ROVI QABUL QILINDI")
         logging.info(f"Ma'lumotlar: {json.dumps(data, indent=2)}")
         
         # Signature tekshirish
@@ -298,37 +195,20 @@ async def handle_click_complete(request):
             update_order_status(order_id, 'Paid')
             logging.info(f"TO'LOV MUVAFFAQIYATLI: {order_id}")
             
-            # FISKALIZATSIYANI ISHGA TUSHIRISH
-            fiscal_success = await process_order_fiscalization(order_id)
-            
             # Foydalanuvchiga xabar
             user_lang = get_user_language(user_id)
-            message_text = get_text(user_lang, 'PAYMENT_SUCCESS').format(order_id=order_id)
-            
-            # Agar fiskalizatsiya muvaffaqiyatli bo'lsa, qo'shimcha xabar
-            if fiscal_success:
-                message_text += "\n\nChek fiskalizatsiya qilindi. Elektron chek telefondagi Click ilovasida ko'rinadi."
-            
             await bot.send_message(
                 user_id, 
-                message_text, 
+                get_text(user_lang, 'PAYMENT_SUCCESS').format(order_id=order_id),
                 reply_markup=get_main_keyboard(user_lang)
             )
             
             # Adminlarga xabar
-            user_data = get_user_data(user_id)
-            user_phone = user_data[1] if user_data and user_data[1] else "Noma'lum"
-            user_name = order[6] if len(order) > 6 else "Foydalanuvchi"
-            
-            admin_msg = f"TO'LOV MUVAFFAQIYATLI:\n"
-            admin_msg += f"Buyurtma ID: {order_id}\n"
-            admin_msg += f"Summa: {int(amount)} UZS\n"
-            admin_msg += f"Foydalanuvchi: {user_name}\n"
-            admin_msg += f"Tel: {user_phone}\n"
-            admin_msg += f"Fiskalizatsiya: {'Muvaffaqiyatli' if fiscal_success else 'Xatolik'}"
-            
             for admin_id in ADMINS:
-                await bot.send_message(admin_id, admin_msg)
+                await bot.send_message(
+                    admin_id, 
+                    f"✅ TO'LOV MUVAFFAQIYATLI:\nBuyurtma: #{order_id}\nSumma: {amount} UZS"
+                )
             
             return web.json_response({
                 "click_trans_id": data.get('click_trans_id'), 
@@ -399,10 +279,11 @@ async def main():
     # Web server yaratish
     app = web.Application()
     
+    # BARCHA METHOD LARNI QABUL QILISH UCHUN
     app.add_routes([
         web.post(WEBHOOK_PATH, handle_telegram),
         web.post('/click/prepare', handle_click_prepare),
-        web.post('/click/complete', handle_click_complete),
+        web.route('*', '/click/complete', handle_click_complete),  # Barcha methodlar
         web.get('/', lambda request: web.Response(text='BOT ISHLAYAPTI!'))
     ])
     
