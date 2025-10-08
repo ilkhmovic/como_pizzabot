@@ -198,7 +198,20 @@ async def handle_back(message: types.Message, state: FSMContext):
 @router.message(F.text.in_([LANGUAGES['uz']['ABOUT_US_BUTTON'], LANGUAGES['ru']['ABOUT_US_BUTTON']]))
 async def handle_about_us(message: types.Message):
     user_lang = get_user_language(message.from_user.id)
-    await message.answer("Biz haqimizda: Bot Test uchun yaratilgan...", reply_markup=get_main_keyboard(user_lang))
+    about_text = (
+        f"**{escape_markdown_v2(get_text(user_lang, 'ABOUT_US_BUTTON'))}**\n\n"
+        f"{escape_markdown_v2(get_text(user_lang, 'ABOUT_US_MESSAGE'))}\n\n"
+        "🍕 *Como Pizza* - bu sizning sevimli taomlaringizni tez va qulay yetkazib beruvchi xizmat! "
+        "Biz yuqori sifatli ingredientlardan tayyorlangan mazali pitsalar va boshqa taomlarni taklif qilamiz. "
+        "Mijozlarimizning qulayligi va mamnunligi bizning ustuvor vazifamizdir. "
+        "Buyurtma bering va lazzatlaning! 😊"
+        if user_lang == 'uz' else
+        "🍕 *Como Pizza* - это сервис быстрой и удобной доставки ваших любимых блюд! "
+        "Мы предлагаем вкусные пиццы и другие блюда, приготовленные из высококачественных ингредиентов. "
+        "Комфорт и удовлетворенность наших клиентов - наш главный приоритет. "
+        "Заказывайте и наслаждайтесь! 😊"
+    )
+    await message.answer(about_text, reply_markup=get_main_keyboard(user_lang), parse_mode="MarkdownV2")
 
 @router.message(F.text.in_([LANGUAGES['uz']['FEEDBACK_BUTTON'], LANGUAGES['ru']['FEEDBACK_BUTTON']]))
 async def handle_feedback_request(message: types.Message, state: FSMContext):
@@ -864,6 +877,7 @@ async def handle_unknown_messages(message: types.Message):
         reply_markup=get_main_keyboard(user_lang)
 
     )
+
 
 
 
