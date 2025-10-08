@@ -8,7 +8,6 @@ from aiohttp import web
 from hashlib import md5
 import re
 from datetime import datetime
-from urllib.parse import parse_qs
 
 from handlers import router
 from db import (
@@ -37,72 +36,157 @@ dp = Dispatcher()
 dp.include_router(router)
 
 # Log sozlamalari
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 
-# --- CLICK YORDAMCHI FUNKSIYALARI ---
+logger = logging.getLogger(__name__)
+
+async def parse_click_data(request):
+    """Click so'rovini JSON yoki form-data formatida parse qiladi"""
+    try:
+        content_type = request.headers.get('Content-Type', '').lower()
+        
+        if 'application/json' in content_type:
+            # JSON formatida
+            data = await request.json()
+            logger.info(f"🟡 JSON DATA QABUL QILINDI: {data}")
+            return data
+        elif 'application/x-www-form-urlencoded' in content_type:
+            # Form-data formatida
+            post_data = await request.post()
+            data = dict(post_data)
+            logger.info(f"🟡 FORM-DATA QABUL QILINDI: {data}")
+            return data
+        else:
+            # Content-Type aniqlanmagan, har ikki usulda urinib ko'ramiz
+            try:
+                data = await request.json()
+                logger.info(f"🟡 JSON (auto) QABUL QILINDI: {data}")
+                return data
+            except:
+                try:
+                    post_data = await request.post()
+                    data = dict(post_data)
+                    logger.info(f"🟡 FORM-DATA (auto) QABUL QILINDI: {data}")
+                    return data
+                except Exception as e:
+                    logger.error(f"🔴 IKKALA USULDA HAM XATO: {e}")
+                    # Request body ni to'g'ridan-to'g'ri o'qib ko'ramiz
+                    try:
+                        body = await request.text()
+                        logger.info(f"🟡 RAW BODY: {body}")
+                        if body:
+                            data = json.loads(body)
+                            return data
+                        else:
+                            return {}
+                    except:
+                        return {}
+                
+    except Exception as e:
+        logger.error(f"🔴 DATA PARSE XATOSI: {e}")
+        # Bo'sh data qaytaramiz
+        return {}
+
 def check_click_request(request_data: dict, action: str) -> bool:
     """Click so'rovining to'g'riligini (md5 hash) tekshiradi."""
     try:
+        logger.info(f"🟡 SIGNATURE TEKSHIRISH: {action}")
+        
+        # Ma'lumotlarni string ga o'tkazish
+        click_trans_id = str(request_data.get('click_trans_id', ''))
+        merchant_trans_id = str(request_data.get('merchant_trans_id', ''))
+        amount = str(request_data.get('amount', ''))
+        action_str = str(request_data.get('action', ''))
+        sign_time = str(request_data.get('sign_time', ''))
+        
         if action == 'prepare':
-            data = f"{request_data.get('click_trans_id')}{SERVICE_ID}{SECRET_KEY}{request_data.get('merchant_trans_id')}{request_data.get('amount')}{request_data.get('action')}{request_data.get('sign_time')}"
+            data_string = f"{click_trans_id}{SERVICE_ID}{SECRET_KEY}{merchant_trans_id}{amount}{action_str}{sign_time}"
         elif action == 'complete':
-            data = f"{request_data.get('click_trans_id')}{SERVICE_ID}{SECRET_KEY}{request_data.get('merchant_trans_id')}{request_data.get('amount')}{request_data.get('action')}{request_data.get('sign_time')}"
+            data_string = f"{click_trans_id}{SERVICE_ID}{SECRET_KEY}{merchant_trans_id}{amount}{action_str}{sign_time}"
         else:
             return False
             
-        generated_sign = md5(data.encode('utf-8')).hexdigest()
-        received_sign = request_data.get('sign_string', '')
+        logger.info(f"🟡 DATA STRING: {data_string}")
         
-        logging.info(f"Signature tekshirish: Generated={generated_sign}, Received={received_sign}")
+        generated_sign = md5(data_string.encode('utf-8')).hexdigest()
+        received_sign = str(request_data.get('sign_string', ''))
+        
+        logger.info(f"🟡 SIGNATURE: Generated={generated_sign}, Received={received_sign}")
+        logger.info(f"🟡 SIGNATURE MOS KELDI: {generated_sign == received_sign}")
         
         return generated_sign == received_sign
     except Exception as e:
-        logging.error(f"Signature tekshirish xatosi: {e}")
+        logger.error(f"🔴 SIGNATURE XATOSI: {e}")
         return False
 
 async def handle_click_prepare(request):
     """Click to'lovni tayyorlash (Prepare) so'rovini qayta ishlaydi."""
     try:
-        data = await request.json()
-        logging.info(f"CLICK PREPARE SO'ROVI QABUL QILINDI")
-        logging.info(f"Ma'lumotlar: {json.dumps(data, indent=2)}")
+        logger.info(f"🟡 CLICK PREPARE SO'ROVI: Method={request.method}")
+        logger.info(f"🟡 HEADERS: {dict(request.headers)}")
+        
+        # Ma'lumotlarni parse qilish
+        data = await parse_click_data(request)
+        logger.info(f"🟡 PREPARE DATA: {data}")
+        
+        if not data:
+            logger.error("🔴 BO'SH DATA QABUL QILINDI")
+            return web.json_response({
+                "error": -1,
+                "error_note": "EMPTY_DATA"
+            })
         
         # Signature tekshirish
         if not check_click_request(data, 'prepare'):
-            logging.error("SIGNATURE TEKSHIRISH XATOSI")
+            logger.error("🔴 SIGNATURE TEKSHIRISH XATOSI")
             return web.json_response({
                 "error": -1,
                 "error_note": "SIGNATURE_CHECK_FAILED"
             })
             
         order_id = data.get('merchant_trans_id')
-        amount = float(data.get('amount'))
+        amount_str = data.get('amount', '0')
         
-        logging.info(f"Buyurtma ID: {order_id}, Summa: {amount}")
+        try:
+            amount = float(amount_str)
+        except ValueError:
+            logger.error(f"🔴 NOTO'G'RI SUMMA: {amount_str}")
+            return web.json_response({
+                "error": -2,
+                "error_note": "INVALID_AMOUNT"
+            })
+        
+        logger.info(f"🟡 BUYURTMA: ID={order_id}, SUMMA={amount}")
         
         # Buyurtmani tekshirish
         order = get_order_by_id(order_id)
         if not order:
-            logging.error(f"BUYURTMA TOPILMADI: {order_id}")
+            logger.error(f"🔴 BUYURTMA TOPILMADI: {order_id}")
             return web.json_response({
                 "error": -4, 
                 "error_note": "ORDER_NOT_FOUND"
             })
             
         total_price = float(order[2])
-        logging.info(f"Bazadagi summa: {total_price}, Kelgan summa: {amount}")
+        logger.info(f"🟡 SUMMA TEKSHIRISH: Bazada={total_price}, Kelgan={amount}, Farq={abs(total_price - amount)}")
         
-        # Summa tekshirish
+        # Summa tekshirish (1 so'm farqga ruxsat)
         if abs(total_price - amount) > 1:
-            logging.error(f"SUMMA MOS KELMAYDI: Bazada {total_price}, Kelgan {amount}")
+            logger.error(f"🔴 SUMMA MOS KELMAYDI: Bazada {total_price}, Kelgan {amount}")
             return web.json_response({
                 "error": -2, 
                 "error_note": "INCORRECT_AMOUNT"
             })
 
         # Holat tekshirish
-        if order[4] != 'Pending':
-            logging.error(f"BUYURTMA HOLATI: {order[4]}")
+        current_status = order[4] if len(order) > 4 else 'Noma lum'
+        logger.info(f"🟡 BUYURTMA HOLATI: {current_status}")
+        
+        if current_status != 'Pending':
+            logger.error(f"🔴 NOTO'G'RI HOLAT: {current_status}")
             return web.json_response({
                 "error": -5, 
                 "error_note": "ALREADY_PAID"
@@ -110,7 +194,7 @@ async def handle_click_prepare(request):
             
         # Holatni yangilash
         update_order_status(order_id, 'Preparing')
-        logging.info(f"PREPARE MUVAFFAQIYATLI: {order_id}")
+        logger.info(f"✅ PREPARE MUVAFFAQIYATLI: {order_id}")
 
         return web.json_response({
             "click_trans_id": data.get('click_trans_id'), 
@@ -121,9 +205,9 @@ async def handle_click_prepare(request):
         })
 
     except Exception as e:
-        logging.error(f"PREPARE XATOSI: {str(e)}")
+        logger.error(f"🔴 PREPARE XATOSI: {str(e)}")
         import traceback
-        logging.error(f"XATO TAFSILOTLARI: {traceback.format_exc()}")
+        logger.error(f"🔴 XATO TAFSILOTLARI: {traceback.format_exc()}")
         return web.json_response({
             "error": -1, 
             "error_note": f"System error: {str(e)}"
@@ -132,40 +216,70 @@ async def handle_click_prepare(request):
 async def handle_click_complete(request):
     """Click to'lovni yakunlash (Complete) so'rovini qayta ishlaydi."""
     try:
+        logger.info(f"🟡 CLICK COMPLETE SO'ROVI: Method={request.method}")
+        
         # GET so'rovini tekshirish (return_url uchun)
         if request.method == 'GET':
             query_params = dict(request.query)
-            logging.info(f"GET SO'ROVI QABUL QILINDI (return_url): {query_params}")
+            logger.info(f"🟡 GET SO'ROVI (return_url): {query_params}")
             
             # Foydalanuvchiga oddiy xabar qaytaramiz
-            return web.Response(
-                text="To'lov muvaffaqiyatli amalga oshirildi! Telegram botingizga qayting.",
-                content_type='text/html'
-            )
+            html_response = """
+            <html>
+                <head>
+                    <title>To'lov Muvaffaqiyatli</title>
+                    <meta charset="utf-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1">
+                </head>
+                <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px; background-color: #f5f5f5;">
+                    <div style="max-width: 500px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                        <h1 style="color: #22c55e; margin-bottom: 20px;">✅ To'lov Muvaffaqiyatli!</h1>
+                        <p style="font-size: 18px; color: #333; margin-bottom: 30px;">To'lov muvaffaqiyatli amalga oshirildi. Telegram botingizga qayting va buyurtma holatini tekshiring.</p>
+                        <a href="https://t.me/ComoPizzaUzBot" style="display: inline-block; background-color: #0088cc; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-size: 16px;">Botga qaytish</a>
+                    </div>
+                </body>
+            </html>
+            """
+            return web.Response(text=html_response, content_type='text/html')
         
         # POST so'rovini qayta ishlash (Click serverdan)
-        data = await request.json()
-        logging.info(f"CLICK COMPLETE POST SO'ROVI QABUL QILINDI")
-        logging.info(f"Ma'lumotlar: {json.dumps(data, indent=2)}")
+        data = await parse_click_data(request)
+        logger.info(f"🟡 COMPLETE DATA: {data}")
+        
+        if not data:
+            logger.error("🔴 BO'SH DATA QABUL QILINDI")
+            return web.json_response({
+                "error": -1,
+                "error_note": "EMPTY_DATA"
+            })
         
         # Signature tekshirish
         if not check_click_request(data, 'complete'):
-            logging.error("SIGNATURE TEKSHIRISH XATOSI")
+            logger.error("🔴 SIGNATURE TEKSHIRISH XATOSI")
             return web.json_response({
                 "error": -1, 
                 "error_note": "SIGNATURE_CHECK_FAILED"
             })
             
         order_id = data.get('merchant_trans_id')
-        amount = float(data.get('amount'))
+        amount_str = data.get('amount', '0')
         error_code = int(data.get('error', -1))
         
-        logging.info(f"Complete: Order {order_id}, Amount {amount}, Error {error_code}")
+        try:
+            amount = float(amount_str)
+        except ValueError:
+            logger.error(f"🔴 NOTO'G'RI SUMMA: {amount_str}")
+            return web.json_response({
+                "error": -2,
+                "error_note": "INVALID_AMOUNT"
+            })
+        
+        logger.info(f"🟡 COMPLETE: Order={order_id}, Amount={amount}, Error={error_code}")
         
         # Buyurtma tekshirish
         order = get_order_by_id(order_id)
         if not order:
-            logging.error(f"BUYURTMA TOPILMADI: {order_id}")
+            logger.error(f"🔴 BUYURTMA TOPILMADI: {order_id}")
             return web.json_response({
                 "error": -4, 
                 "error_note": "ORDER_NOT_FOUND"
@@ -174,7 +288,7 @@ async def handle_click_complete(request):
         # Summa tekshirish
         total_price = float(order[2])
         if abs(total_price - amount) > 1:
-            logging.error(f"SUMMA MOS KELMAYDI: Bazada {total_price}, Kelgan {amount}")
+            logger.error(f"🔴 SUMMA MOS KELMAYDI: Bazada {total_price}, Kelgan {amount}")
             return web.json_response({
                 "error": -2, 
                 "error_note": "INCORRECT_AMOUNT"
@@ -184,8 +298,9 @@ async def handle_click_complete(request):
             user_id = order[1]
             
             # To'lov allaqachon amalga oshirilganligini tekshirish
-            if order[4] == 'Paid':
-                logging.warning(f"TO'LOV ALLAQACHON AMALGA OSHIRILGAN: {order_id}")
+            current_status = order[4] if len(order) > 4 else 'Noma lum'
+            if current_status == 'Paid':
+                logger.warning(f"🟡 TO'LOV ALLAQACHON AMALGA OSHIRILGAN: {order_id}")
                 return web.json_response({
                     "error": -5, 
                     "error_note": "ALREADY_PAID"
@@ -193,22 +308,29 @@ async def handle_click_complete(request):
             
             # To'lovni yakunlash
             update_order_status(order_id, 'Paid')
-            logging.info(f"TO'LOV MUVAFFAQIYATLI: {order_id}")
+            logger.info(f"✅ TO'LOV MUVAFFAQIYATLI: {order_id}")
             
             # Foydalanuvchiga xabar
             user_lang = get_user_language(user_id)
-            await bot.send_message(
-                user_id, 
-                get_text(user_lang, 'PAYMENT_SUCCESS').format(order_id=order_id),
-                reply_markup=get_main_keyboard(user_lang)
-            )
+            try:
+                await bot.send_message(
+                    user_id, 
+                    f"✅ Buyurtma №{order_id} uchun to'lov muvaffaqiyatli amalga oshirildi!\n\n💰 Summa: {int(amount)} UZS\n\nBuyurtmangiz tez orada yetkazib beriladi.",
+                    reply_markup=get_main_keyboard(user_lang)
+                )
+                logger.info(f"✅ FOYDALANUVCHIGA XABAR YUBORILDI: {user_id}")
+            except Exception as e:
+                logger.error(f"🔴 FOYDALANUVCHIGA XABAR YUBORISH XATOSI: {e}")
             
             # Adminlarga xabar
             for admin_id in ADMINS:
-                await bot.send_message(
-                    admin_id, 
-                    f"✅ TO'LOV MUVAFFAQIYATLI:\nBuyurtma: #{order_id}\nSumma: {amount} UZS"
-                )
+                try:
+                    await bot.send_message(
+                        admin_id, 
+                        f"✅ TO'LOV MUVAFFAQIYATLI:\n\n📦 Buyurtma: #{order_id}\n💰 Summa: {int(amount)} UZS\n👤 Foydalanuvchi: {user_id}\n💳 To'lov usuli: Click"
+                    )
+                except Exception as e:
+                    logger.error(f"🔴 ADMINGA XABAR YUBORISH XATOSI: {e}")
             
             return web.json_response({
                 "click_trans_id": data.get('click_trans_id'), 
@@ -224,13 +346,16 @@ async def handle_click_complete(request):
             user_id = order[1]
             user_lang = get_user_language(user_id)
             
-            logging.warning(f"TO'LOV BEKOR QILINDI: {order_id}, Error: {error_code}")
+            logger.warning(f"🟡 TO'LOV BEKOR QILINDI: {order_id}, Error: {error_code}")
             
-            await bot.send_message(
-                user_id, 
-                get_text(user_lang, 'PAYMENT_CANCELLED').format(order_id=order_id),
-                reply_markup=get_main_keyboard(user_lang)
-            )
+            try:
+                await bot.send_message(
+                    user_id, 
+                    f"❌ Buyurtma №{order_id} uchun to'lov bekor qilindi.\n\nIltimos, qaytadan urinib ko'ring yoki boshqa to'lov usulini tanlang.",
+                    reply_markup=get_main_keyboard(user_lang)
+                )
+            except Exception as e:
+                logger.error(f"🔴 BEKOR QILISH XABARINI YUBORISH XATOSI: {e}")
             
             return web.json_response({
                 "error": -9, 
@@ -238,9 +363,9 @@ async def handle_click_complete(request):
             })
 
     except Exception as e:
-        logging.error(f"COMPLETE XATOSI: {str(e)}")
+        logger.error(f"🔴 COMPLETE XATOSI: {str(e)}")
         import traceback
-        logging.error(f"XATO TAFSILOTLARI: {traceback.format_exc()}")
+        logger.error(f"🔴 XATO TAFSILOTLARI: {traceback.format_exc()}")
         return web.json_response({
             "error": -1, 
             "error_note": f"System error: {str(e)}"
@@ -254,37 +379,36 @@ async def handle_telegram(request):
         await dp.feed_update(bot, update)
         return web.Response(status=200)
     except Exception as e:
-        logging.error(f"Telegram yangilanishini qayta ishlashda xato: {e}")
+        logger.error(f"Telegram yangilanishini qayta ishlashda xato: {e}")
         return web.Response(status=500, text=f"Error: {e}")
 
 # --- ASOSIY FUNKSIYA ---
 async def main():
-    logging.info("Bot ishga tushmoqda...")
+    logger.info("🚀 COMO PIZZA BOT ishga tushmoqda...")
     
     # Database ni ishga tushirish
     try:
         init_db()
-        logging.info("Database ishga tushdi")
+        logger.info("✅ Database ishga tushdi")
     except Exception as e:
-        logging.error(f"Database xatosi: {e}")
+        logger.error(f"❌ Database xatosi: {e}")
     
     # Webhook ni o'rnatish
     try:
         await bot.delete_webhook()
         await bot.set_webhook(url=WEBHOOK_URL, drop_pending_updates=True)
-        logging.info(f"Webhook o'rnatildi: {WEBHOOK_URL}")
+        logger.info(f"✅ Webhook o'rnatildi: {WEBHOOK_URL}")
     except Exception as e:
-        logging.error(f"Webhook xatosi: {e}")
+        logger.error(f"❌ Webhook xatosi: {e}")
     
     # Web server yaratish
     app = web.Application()
     
-    # BARCHA METHOD LARNI QABUL QILISH UCHUN
     app.add_routes([
         web.post(WEBHOOK_PATH, handle_telegram),
         web.post('/click/prepare', handle_click_prepare),
-        web.route('*', '/click/complete', handle_click_complete),  # Barcha methodlar
-        web.get('/', lambda request: web.Response(text='BOT ISHLAYAPTI!'))
+        web.route('*', '/click/complete', handle_click_complete),
+        web.get('/', lambda request: web.Response(text='🤖 COMO PIZZA BOT ISHLAYAPTI!'))
     ])
     
     runner = web.AppRunner(app)
@@ -292,8 +416,9 @@ async def main():
     site = web.TCPSite(runner, '0.0.0.0', PORT)
     await site.start()
     
-    logging.info(f"Server {PORT}-portda ishga tushdi")
-    logging.info("Bot tayyor!")
+    logger.info(f"✅ Server {PORT}-portda ishga tushdi")
+    logger.info("🍕 COMO PIZZA BOT tayyor va ishga tushdi!")
+    logger.info("💳 Click integrasiyasi faollashtirildi!")
     
     # Server doimiy ishlashi
     await asyncio.Event().wait()
