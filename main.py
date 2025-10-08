@@ -12,7 +12,8 @@ from datetime import datetime
 from handlers import router
 from db import (
     init_db, get_order_by_id, update_order_status, 
-    get_user_data, get_user_language, get_order_items_by_id
+    get_user_data, get_user_language, get_order_items_by_id,
+    get_order_items_by_id
 )
 from keyboards import get_main_keyboard, get_text
 
@@ -29,7 +30,7 @@ SECRET_KEY = '4krNcqcYdfSpGD'
 SERVICE_ID = '83881'
 MERCHANT_ID = '46627'
 ADMINS = [7798312047, 7720794522]
-DELIVERY_FEE = 1000
+DELIVERY_FEE = 100
 
 # --- BOT VA DISPATCHER ---
 bot = Bot(token=BOT_TOKEN)
@@ -37,7 +38,7 @@ dp = Dispatcher()
 dp.include_router(router)
 
 # --- FISKALIZATSIYA FUNKSIYALARI ---
-async def fiscalize_receipt(order_id: int, amount: float, phone_number: str = "") -> dict:
+async def fiscalize_receipt(order_id: int, amount: float, phone_number: str = "") -> bool:
     """
     Click fiskalizatsiya API orqali chek yaratadi
     Docs: https://docs.click.uz/fiscalization/
@@ -47,7 +48,7 @@ async def fiscalize_receipt(order_id: int, amount: float, phone_number: str = ""
         order_items = get_order_items_by_id(order_id)
         if not order_items:
             logging.error(f"Fiskalizatsiya: Buyurtma {order_id} uchun mahsulotlar topilmadi")
-            return {"success": False, "error": "No order items"}
+            return False
 
         # Fiskalizatsiya uchun mahsulotlar ro'yxatini tayyorlash
         items = []
@@ -87,20 +88,19 @@ async def fiscalize_receipt(order_id: int, amount: float, phone_number: str = ""
             result = response.json()
             if result.get('status') == 0:  # 0 - muvaffaqiyatli
                 logging.info(f"✅ Fiskalizatsiya muvaffaqiyatli: Order {order_id}, Receipt ID: {result.get('receipt_id')}")
-                return {"success": True, "receipt_id": result.get('receipt_id')}
+                return True
             else:
-                error_msg = result.get('error_msg', 'Noma\'lum xato')
-                logging.error(f"❌ Fiskalizatsiya xatosi: {error_msg}")
-                return {"success": False, "error": error_msg}
+                logging.error(f"❌ Fiskalizatsiya xatosi: {result.get('error_msg')}")
+                return False
         else:
             logging.error(f"❌ Fiskalizatsiya HTTP xatosi: {response.status_code} - {response.text}")
-            return {"success": False, "error": f"HTTP {response.status_code}"}
+            return False
 
     except Exception as e:
         logging.error(f"❌ Fiskalizatsiya jarayonida xato: {e}")
-        return {"success": False, "error": str(e)}
+        return False
 
-async def process_order_fiscalization(order_id: int):
+async def process_order_fiscalization(order_id: int, bot: Bot = None):
     """Buyurtma uchun fiskalizatsiyani amalga oshiradi"""
     try:
         order = get_order_by_id(order_id)
@@ -116,30 +116,29 @@ async def process_order_fiscalization(order_id: int):
         phone_number = user_data[1] if user_data and user_data[1] else ""
 
         # Fiskalizatsiyani amalga oshirish
-        fiscal_result = await fiscalize_receipt(order_id, amount, phone_number)
+        fiscal_success = await fiscalize_receipt(order_id, amount, phone_number)
 
         # Adminlarga xabar berish
-        for admin_id in ADMINS:
-            if fiscal_result["success"]:
-                await bot.send_message(
-                    admin_id,
-                    f"✅ Fiskalizatsiya muvaffaqiyatli:\n"
-                    f"Buyurtma: #{order_id}\n"
-                    f"Summa: {amount} UZS\n"
-                    f"Chek ID: {fiscal_result.get('receipt_id', 'Noma\\'lum')}\n"
-                    f"Tel: {phone_number or 'Noma\\'lum'}"
-                )
-            else:
-                await bot.send_message(
-                    admin_id,
-                    f"⚠️ Fiskalizatsiya xatosi:\n"
-                    f"Buyurtma: #{order_id}\n"
-                    f"Summa: {amount} UZS\n"
-                    f"Xato: {fiscal_result.get('error', 'Noma\\'lum')}\n"
-                    f"Iltimos, qo'lda fiskalizatsiya qiling!"
-                )
+        if bot:
+            for admin_id in ADMINS:
+                if fiscal_success:
+                    await bot.send_message(
+                        admin_id,
+                        "✅ Fiskalizatsiya muvaffaqiyatli:\n"
+                        f"Buyurtma: #{order_id}\n"
+                        f"Summa: {amount} UZS\n"
+                        f"Tel: {phone_number or 'Noma lum'}"
+                    )
+                else:
+                    await bot.send_message(
+                        admin_id,
+                        "⚠️ Fiskalizatsiya xatosi:\n"
+                        f"Buyurtma: #{order_id}\n"
+                        f"Summa: {amount} UZS\n"
+                        "Iltimos, qo'lda fiskalizatsiya qiling!"
+                    )
 
-        return fiscal_result["success"]
+        return fiscal_success
 
     except Exception as e:
         logging.error(f"❌ Fiskalizatsiya jarayonida xato: {e}")
@@ -266,7 +265,7 @@ async def handle_click_complete(request):
             update_order_status(order_id, 'Paid')
             
             # FISKALIZATSIYANI ISHGA TUSHIRISH
-            fiscal_success = await process_order_fiscalization(order_id)
+            fiscal_success = await process_order_fiscalization(order_id, bot)
             
             # Foydalanuvchiga xabar yuborish
             user_lang = get_user_language(user_id)
@@ -274,7 +273,7 @@ async def handle_click_complete(request):
             
             # Agar fiskalizatsiya muvaffaqiyatli bo'lsa, qo'shimcha xabar
             if fiscal_success:
-                message_text += f"\n\n📄 Chek fiskalizatsiya qilindi. Elektron chek telefondagi Click ilovasida ko'rinadi."
+                message_text += "\n\n📄 Chek fiskalizatsiya qilindi. Elektron chek telefondagi Click ilovasida ko'rinadi."
             
             await bot.send_message(
                 user_id, 
@@ -287,7 +286,7 @@ async def handle_click_complete(request):
             user_phone = user_data[1] if user_data and user_data[1] else "Noma'lum"
             user_name = order[6] if len(order) > 6 else "Foydalanuvchi"
             
-            admin_msg = f"✅ CLICK TO'LOV MUVAFFAQIYATLI:\n"
+            admin_msg = "✅ CLICK TO'LOV MUVAFFAQIYATLI:\n"
             admin_msg += f"Buyurtma ID: **{order_id}**\n"
             admin_msg += f"Summa: **{int(amount)} UZS**\n"
             admin_msg += f"Foydalanuvchi: [{user_name}](tg://user?id={user_id})\n"
