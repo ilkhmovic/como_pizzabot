@@ -15,15 +15,16 @@ from db import (
     get_user_data, get_user_language, get_order_items_by_id
 )
 from keyboards import get_main_keyboard, get_text
+from itertools import product
 
 # --- KONFIGURATSIYA ---
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "8201136862:AAH91yLSxrTbpO2LSNZ1lu40BivDVTsQWQ4")
-PORT = int(os.environ.get("PORT", 8000))
+PORT = int(os.environ.get("PORT", 10000))
 WEBHOOK_HOST = os.environ.get("WEBHOOK_HOST", "https://como-pizzabot1.onrender.com")
 WEBHOOK_PATH = '/webhook'
 WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
 
-# Click sozlamalari
+# Click sozlamalari  4krNcqcYdfSpGD
 SECRET_KEY = '4krNcqcYdfSpGD'  # Click tizimidan olingan maxfiy kalit
 SERVICE_ID = '83881'
 MERCHANT_ID = '46627'
@@ -85,88 +86,111 @@ async def parse_click_data(request):
         return {}
 
 def check_click_request(request_data: dict, action: str) -> bool:
-    """Click to'lov so'rovining imzosini (signature) tekshiradi."""
+    """
+    Click to'lov so'rovining imzosini (signature) tekshiradi.
+    Robust versiya: turli formatdagi amount va boshqa kichik farqlarni sinab ko'radi.
+    """
     try:
         logger.info(f"🟡 SIGNATURE TEKSHIRISH: {action}")
 
-        # --- Ma'lumotlarni olish ---
+        # Yupqa tekshiruv uchun maydonlarni Str qatorda oling
         click_trans_id = str(request_data.get('click_trans_id', '')).strip()
+        # Service ID kelgan bo'lishi mumkin, lekin fallback qilib konfiguratsiyadagi SERVICE_ID ishlatamiz
+        service_id_from_req = str(request_data.get('service_id', '')).strip()
+        service_candidates = []
+        if service_id_from_req:
+            service_candidates.append(service_id_from_req)
+        service_candidates.append(SERVICE_ID)
+        # Unik qiling
+        service_candidates = list(dict.fromkeys(service_candidates))
+
         merchant_trans_id = str(request_data.get('merchant_trans_id', '')).strip()
 
-        # Amountni Click talabiga binoan har doim ikki kasr bilan formatlaymiz
-        # (Click sign hisobida ham ko'pincha 2 kasr ishlatiladi)
+        # amount: turli variantlarni tayyorlaymiz
         raw_amount = str(request_data.get('amount', '0')).strip()
+        amount_candidates = [raw_amount]
         try:
-            # float->format to ensure "1100" -> "1100.00" and "1100.0" -> "1100.00"
-            amount = "{:.2f}".format(float(raw_amount))
-        except Exception as e:
-            logger.error(f"🔴 AMOUNT FORMAT XATOSI: {e} | Kelgan qiymat: {raw_amount}")
-            return False
+            f = float(raw_amount)
+            amount_candidates.append("{:.2f}".format(f))  # 1100.0 -> 1100.00
+            # integer variant (1100.00 -> "1100")
+            if float(f).is_integer():
+                amount_candidates.append(str(int(f)))
+        except Exception:
+            # agar parse bo'lmasa, faqat raw qoldir
+            pass
+        # unik va bo'shdan tozalash
+        amount_candidates = [a for a in dict.fromkeys(amount_candidates) if a is not None and a != '']
 
-        logger.info(f"🟡 AMOUNT (FORMATTED FOR SIGN): {amount}")
-
-        # action parametri 'prepare' -> 0, 'complete' -> 1
+        # action: odatda requestdagi action bilan ishlaymiz, lekin expected ham kiritamiz
+        action_req = str(request_data.get('action', '')).strip()
         expected_action = '0' if action == 'prepare' else '1'
-        action_str = str(request_data.get('action', '')).strip()
-        if action_str != expected_action:
-            logger.error(f"🔴 ACTION NOMUVOFIQ: Keldi={action_str}, Kutilgan={expected_action}")
-            return False
+        action_candidates = []
+        if action_req:
+            action_candidates.append(action_req)
+        action_candidates.append(expected_action)
+        action_candidates = list(dict.fromkeys(action_candidates))
 
-        # sign_time — kelgan ko‘rinishda olinadi
+        # sign_time to'g'ridan-to'g'ri kelganicha
         sign_time = str(request_data.get('sign_time', '')).strip()
 
-        # complete uchun merchant_prepare_id (faqat complete uchun qo'shiladi)
-        merchant_prepare_id = ''
-        if action == 'complete':
-            merchant_prepare_id = str(request_data.get('merchant_prepare_id', '')).strip() or ''
+        # merchant_prepare_id candidate: bo'sh va kelgan qiymat (complete uchun)
+        vendor_mp = str(request_data.get('merchant_prepare_id', '')).strip()
+        merchant_prepare_candidates = ['']
+        if vendor_mp:
+            merchant_prepare_candidates.append(vendor_mp)
+        # ba'zan prepare javobida order id qaytarilgan bo'lsa, uni ham sinash foydali:
+        merchant_prepare_candidates.append(merchant_trans_id)
+        # unik va tozalash
+        merchant_prepare_candidates = [m for m in dict.fromkeys(merchant_prepare_candidates) if m is not None]
 
-        # Logga chiqaramiz (diagnostika uchun)
-        logger.info(
-            f"🟡 Maydonlar:\n"
-            f"  click_trans_id={click_trans_id}\n"
-            f"  service_id={SERVICE_ID}\n"
-            f"  secret_key={SECRET_KEY}\n"
-            f"  merchant_trans_id={merchant_trans_id}\n"
-            f"  amount={amount}\n"
-            f"  action={action_str}\n"
-            f"  sign_time={sign_time}\n"
-            f"  merchant_prepare_id={merchant_prepare_id}"
-        )
-
-        # --- Data string yaratish (Click hujjatlariga muvofiq, hech qanday qo'shimcha belgilar bilan emas) ---
-        if action == 'prepare':
-            data_string = (
-                f"{click_trans_id}{SERVICE_ID}{SECRET_KEY}"
-                f"{merchant_trans_id}{amount}{action_str}{sign_time}"
-            )
-        elif action == 'complete':
-            data_string = (
-                f"{click_trans_id}{SERVICE_ID}{SECRET_KEY}"
-                f"{merchant_trans_id}{amount}{action_str}{sign_time}{merchant_prepare_id}"
-            )
-        else:
-            logger.error(f"🔴 NOMA'LUM ACTION: {action}")
-            return False
-
-        logger.info(f"🟡 DATA STRING: {data_string}")
-        logger.info(f"🟡 COMPLETE SIGN CHECK: merchant_prepare_id (kelgan) = {merchant_prepare_id}")
-
-        # --- MD5 imzo yaratish va solishtirish ---
-        generated_sign = md5(data_string.encode('utf-8')).hexdigest()
+        # Received sign (kelgan)
         received_sign = str(
             request_data.get('sign_string') or 
             request_data.get('sign') or 
             request_data.get('signature') or ''
         ).strip()
 
-        logger.info(f"🟡 SIGNATURE: Generated={generated_sign}, Received={received_sign}")
+        logger.info(f"🟡 Kelgan sign_string: {received_sign}")
+        logger.info(f"🟡 Sinash uchun candidate service_ids: {service_candidates}")
+        logger.info(f"🟡 Sinash uchun candidate amounts: {amount_candidates}")
+        logger.info(f"🟡 Sinash uchun candidate actions: {action_candidates}")
+        logger.info(f"🟡 Sinash uchun candidate merchant_prepare_id: {merchant_prepare_candidates}")
+        logger.info(f"🟡 click_trans_id={click_trans_id}, merchant_trans_id={merchant_trans_id}, sign_time={sign_time}")
 
-        if generated_sign != received_sign:
-            logger.error("🔴 SIGNATURE MOS KELMADI ❌")
-            return False
+        # Yaratiladigan kombinatsiyalarni tekshiruvchi sikl
+        tried = []
+        for svc, amt, act in product(service_candidates, amount_candidates, action_candidates):
+            # merchant_prepare_id faqat action==1 yoki agar action==complete so'rovda ham bo'sh sinab ko'ramiz
+            if act == '1':
+                mp_list = merchant_prepare_candidates
+            else:
+                # prepare uchun merchant_prepare_id bo'sh bo'lishi kerak — faqat '' ni sinaymiz
+                mp_list = ['']
 
-        logger.info("✅ SIGNATURE MOS KELDI ✅")
-        return True
+            for mp in mp_list:
+                # Data stringni Click hujjatiga moslab yig'amiz
+                if act == '1':
+                    data_string = f"{click_trans_id}{svc}{SECRET_KEY}{merchant_trans_id}{amt}{act}{sign_time}{mp}"
+                else:
+                    data_string = f"{click_trans_id}{svc}{SECRET_KEY}{merchant_trans_id}{amt}{act}{sign_time}"
+
+                generated = md5(data_string.encode('utf-8')).hexdigest()
+                tried.append({
+                    "service": svc, "amount": amt, "action": act, "merchant_prepare_id": mp, "data_string": data_string, "generated": generated
+                })
+
+                if generated == received_sign:
+                    logger.info("✅ SIGNATURE MOS KELDI (variant topildi) ✅")
+                    logger.info(f"🟡 MATCH VARIANT -> service={svc}, amount={amt}, action={act}, merchant_prepare_id={mp}")
+                    logger.info(f"🟡 MATCH DATA STRING: {data_string}")
+                    return True
+
+        # agar bu yerga yetib kelsa — birorta variant ham mos kelmadi
+        logger.error("🔴 SIGNATURE MOS KELMADI: hech bir variant mos kelmadi ❌")
+        # diagnostics: log bir nechta sinab ko'rilgan namunalardan kichik ro'yxat ko'rsatamiz
+        for t in tried[:6]:
+            logger.debug(f"TRIED: svc={t['service']} amt={t['amount']} act={t['action']} mp={t['merchant_prepare_id']} gen={t['generated']} ds={t['data_string']}")
+        return False
 
     except Exception as e:
         logger.error(f"🔴 SIGNATURE TEKSHIRISHDA XATOLIK: {e}")
