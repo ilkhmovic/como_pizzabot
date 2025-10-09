@@ -460,10 +460,12 @@ async def main():
    
     # Database ni ishga tushirish
     try:
-        init_db()
-        logger.info("✅ Database ishga tushdi")
+        init_db()  # Sinxron funksiya, chunki SQLite sinxron
+        logging.info(f"SQLite DB path: {os.getenv('SQLITE_DB_PATH')}")
+        logging.info("Ma'lumotlar bazasi sozlandi")
     except Exception as e:
-        logger.error(f"❌ Database xatosi: {e}")
+        logging.error(f"Ma'lumotlar bazasi sozlash xatosi: {e}")
+        return
    
     # Webhook ni o'rnatish
     try:
@@ -497,4 +499,5 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
 
