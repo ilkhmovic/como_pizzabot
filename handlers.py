@@ -34,7 +34,7 @@ ADMINS = [7798312047, 7720794522]
 SERVICE_ID = '83881'
 MERCHANT_ID = '46627'
 SECRET_KEY = '4krNcqcYdfSpGD'
-WEBHOOK_HOST = 'https://como-pizzabot1.onrender.com'  # O'z domainingizga o'zgartiring
+WEBHOOK_HOST = 'https://como-pizzabot1.onrender.com'
 
 router = Router()
 
@@ -59,24 +59,32 @@ async def send_admin_notification(
     user_data: Tuple[Optional[int], Optional[str], Optional[float], Optional[float], Optional[str]],
     final_sum: float,
     payment_type: str,
-    status: str
+    status: str,
+    user_first_name: str = None,
+    user_full_name: str = None
 ):
     """Adminlarga yangi buyurtma haqida xabar yuboradi."""
     # user_data ni ehtiyotkorlik bilan ochish
     if user_data and len(user_data) >= 5:
         user_id, phone_number, lat, lon, user_lang = user_data
-        user_first_name = "Mijoz"  # Standart qiymat
     else:
         user_id, phone_number, lat, lon = 0, "Noma'lum", None, None
         user_lang = 'uz'
-        user_first_name = "Noma'lum mijoz"
+
+    # Foydalanuvchi ismini aniqlash
+    if user_full_name:
+        customer_name = user_full_name
+    elif user_first_name:
+        customer_name = user_first_name
+    else:
+        customer_name = "Noma'lum mijoz"
 
     # Buyurtma mahsulotlarini olish
     items = get_order_items_by_id(order_id)
 
     # HTML formatida xabar matnini tayyorlash
     message_text = f"<b>YANGI BUYURTMA №{order_id}</b>\n"
-    message_text += f"<b>Mijoz:</b> {user_first_name}\n"
+    message_text += f"<b>Mijoz:</b> {customer_name}\n"
     message_text += f"<b>Tel:</b> {phone_number}\n"
     message_text += f"<b>To'lov turi:</b> {payment_type}\n"
     message_text += f"<b>Holati:</b> {status}\n\n"
@@ -643,7 +651,16 @@ async def process_payment_choice_or_confirm(message: types.Message, state: FSMCo
         )
         
         # TO'G'RILANGAN: send_admin_notification funksiyasini to'g'ri parametrlar bilan chaqirish
-        await send_admin_notification(bot, order_id, user_data, final_total, 'Click', 'Pending')
+        await send_admin_notification(
+            bot, 
+            order_id, 
+            user_data, 
+            final_total, 
+            'Click', 
+            'Pending',
+            user_first_name=message.from_user.first_name,
+            user_full_name=message.from_user.full_name
+        )
         
         clear_cart(user_id)
         await state.clear()
@@ -662,12 +679,21 @@ async def process_payment_choice_or_confirm(message: types.Message, state: FSMCo
         )
         
         # Notify admins - TO'G'RILANGAN: send_admin_notification funksiyasini to'g'ri parametrlar bilan chaqirish
-        await send_admin_notification(bot, order_id, user_data, final_total, 'Cash', 'New')
+        await send_admin_notification(
+            bot, 
+            order_id, 
+            user_data, 
+            final_total, 
+            'Cash', 
+            'New',
+            user_first_name=message.from_user.first_name,
+            user_full_name=message.from_user.full_name
+        )
         
         # Clear cart and inform user
         clear_cart(user_id)
         await message.answer(
-                        get_text(user_lang, 'ORDER_CONFIRMED').format(order_id=order_id),
+            get_text(user_lang, 'ORDER_CONFIRMED').format(order_id=order_id),
             reply_markup=get_main_keyboard(user_lang)
         )
         await state.clear()
@@ -720,7 +746,16 @@ async def handle_confirm_order_message(message: types.Message, state: FSMContext
         )
         
         # Adminga xabar yuborish - TO'G'RILANGAN: send_admin_notification funksiyasini to'g'ri parametrlar bilan chaqirish
-        await send_admin_notification(bot, order_id, user_data, final_total, payment_method, 'New')
+        await send_admin_notification(
+            bot, 
+            order_id, 
+            user_data, 
+            final_total, 
+            payment_method, 
+            'New',
+            user_first_name=message.from_user.first_name,
+            user_full_name=message.from_user.full_name
+        )
         
         clear_cart(user_id)
         await message.answer(get_text(user_lang, 'ORDER_CONFIRMED').format(order_id=order_id),
