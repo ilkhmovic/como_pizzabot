@@ -214,10 +214,25 @@ def get_main_keyboard(lang):
     return types.ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
 
 def get_menu_keyboard(lang):
-    menus = get_all_menus()
-    kb = [[types.KeyboardButton(text=menu)] for menu in menus]
-    kb.append([types.KeyboardButton(text=get_text(lang, 'CART_BUTTON')), types.KeyboardButton(text=get_text(lang, 'BACK_BUTTON'))])
-    return types.ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
+    menus = get_all_menus()  # Bazadan barcha menyularni olish
+    keyboard = []
+    row = []
+    
+    # Menyularni ikkitadan guruhlash
+    for i, menu in enumerate(menus):
+        row.append(KeyboardButton(text=menu))
+        if len(row) == 2 or i == len(menus) - 1:  # Har ikkita tugmadan so'ng yoki oxirgi menyuda
+            keyboard.append(row)
+            row = []
+    
+    # Orqaga tugmasini oxirgi qatorga qo'shish
+    keyboard.append([KeyboardButton(text=get_text(lang, 'BACK_BUTTON'))])
+    
+    return ReplyKeyboardMarkup(
+        keyboard=keyboard,
+        resize_keyboard=True,
+        one_time_keyboard=True
+    )
 
 def get_products_keyboard(lang, menu_name):
     """Mahsulotlar uchun klaviatura yaratadi."""
@@ -307,6 +322,7 @@ def get_product_inline_keyboard(product_name, current_quantity=1):
     ]
 
     return types.InlineKeyboardMarkup(inline_keyboard=kb)
+
 
 
 
