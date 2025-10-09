@@ -2,93 +2,91 @@ import sqlite3
 import logging
 from datetime import datetime
 
-DATABASE_NAME = "bot_data.db"
+DATABASE_NAME = os.getenv('SQLITE_DB_PATH', '/data/bot_data.db')
 
 def get_connection():
     return sqlite3.connect(DATABASE_NAME)
 
 def init_db():
-    conn = get_connection()
-    cursor = conn.cursor()
+    """Ma'lumotlar bazasini boshlang'ich sozlash."""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        
+        # Jadvallarni yaratish
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                user_id INTEGER PRIMARY KEY,
+                phone_number TEXT,
+                latitude REAL,
+                longitude REAL,
+                language TEXT DEFAULT 'uz'
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS menus (
+                menu_name TEXT PRIMARY KEY
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS products (
+                product_name TEXT PRIMARY KEY,
+                menu_name TEXT,
+                description TEXT,
+                price REAL,
+                FOREIGN KEY (menu_name) REFERENCES menus(menu_name)
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS cart (
+                user_id INTEGER,
+                product_name TEXT,
+                quantity INTEGER,
+                PRIMARY KEY (user_id, product_name)
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS orders (
+                order_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                total_price REAL,
+                created_at TEXT,
+                status TEXT,
+                payment_type TEXT,
+                user_first_name TEXT,
+                FOREIGN KEY (user_id) REFERENCES users(user_id)
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS order_items (
+                order_id INTEGER,
+                product_name TEXT,
+                quantity INTEGER,
+                price REAL,
+                FOREIGN KEY (order_id) REFERENCES orders(order_id)
+            )
+        ''')
 
-    # Users jadvalini yaratish
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            user_id INTEGER PRIMARY KEY,
-            phone_number TEXT,
-            latitude REAL,
-            longitude REAL,
-            language TEXT DEFAULT 'uz'
-        )
-    ''')
-
-    # Menus jadvalini yaratish
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS menus (
-            menu_name TEXT PRIMARY KEY
-        )
-    ''')
-
-    # Products jadvalini yaratish
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS products (
-            product_name TEXT PRIMARY KEY,
-            menu_name TEXT,
-            description TEXT,
-            price REAL,
-            FOREIGN KEY (menu_name) REFERENCES menus(menu_name)
-        )
-    ''')
-
-    # Cart jadvalini yaratish
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS cart (
-            user_id INTEGER,
-            product_name TEXT,
-            quantity INTEGER,
-            PRIMARY KEY (user_id, product_name)
-        )
-    ''')
-
-    # Orders jadvalini yaratish
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS orders (
-            order_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            total_price REAL,
-            created_at TEXT,
-            status TEXT,
-            payment_type TEXT,
-            user_first_name TEXT,
-            FOREIGN KEY (user_id) REFERENCES users(user_id)
-        )
-    ''')
-
-    # Order_items jadvalini yaratish
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS order_items (
-            order_id INTEGER,
-            product_name TEXT,
-            quantity INTEGER,
-            price REAL,
-            FOREIGN KEY (order_id) REFERENCES orders(order_id)
-        )
-    ''')
-
-    # Dastlabki ma'lumotlar qo'shish
-    cursor.execute("INSERT OR IGNORE INTO menus (menu_name) VALUES ('Fast Food')")
-    cursor.execute("INSERT OR IGNORE INTO menus (menu_name) VALUES ('Ichimliklar')")
-    cursor.execute("INSERT OR IGNORE INTO menus (menu_name) VALUES ('Pitsa')")
-
-    cursor.execute("INSERT OR IGNORE INTO products (product_name, menu_name, description, price) VALUES (?, ?, ?, ?)", 
-                  ('Burger', 'Fast Food', 'Mazali burger', 25000))
-    cursor.execute("INSERT OR IGNORE INTO products (product_name, menu_name, description, price) VALUES (?, ?, ?, ?)", 
-                  ('Cola', 'Ichimliklar', 'Yaxshi ichimlik', 10000))
-    cursor.execute("INSERT OR IGNORE INTO products (product_name, menu_name, description, price) VALUES (?, ?, ?, ?)", 
-                  ('Naomi', 'Pitsa', 'Jejiajbeoqlns', 12000))
-
-    conn.commit()
-    conn.close()
+        # Dastlabki ma'lumotlarni faqat bo'sh bo'lsa qo'shish
+        cursor.execute("SELECT count(*) FROM menus")
+        if cursor.fetchone()[0] == 0:  # Agar menus jadvali bo'sh bo'lsa
+            cursor.execute("INSERT OR IGNORE INTO menus (menu_name) VALUES ('Fast Food')")
+            cursor.execute("INSERT OR IGNORE INTO menus (menu_name) VALUES ('Ichimliklar')")
+            cursor.execute("INSERT OR IGNORE INTO menus (menu_name) VALUES ('Pitsa')")
+            cursor.execute("INSERT OR IGNORE INTO products (product_name, menu_name, description, price) VALUES (?, ?, ?, ?)",
+                          ('Burger', 'Fast Food', 'Mazali burger', 25000))
+            cursor.execute("INSERT OR IGNORE INTO products (product_name, menu_name, description, price) VALUES (?, ?, ?, ?)",
+                          ('Cola', 'Ichimliklar', 'Yaxshi ichimlik', 10000))
+            cursor.execute("INSERT OR IGNORE INTO products (product_name, menu_name, description, price) VALUES (?, ?, ?, ?)",
+                          ('Naomi', 'Pitsa', 'Jejiajbeoqlns', 12000))
+        
+        conn.commit()
+        logging.info("Ma'lumotlar bazasi muvaffaqiyatli sozlandi")
+    except sqlite3.Error as e:
+        logging.error(f"Ma'lumotlar bazasini sozlashda xato: {e}")
+        raise
+    finally:
+        conn.close()
 
 def save_user_data(user_id, phone_number, latitude=None, longitude=None):
     conn = get_connection()
@@ -305,3 +303,4 @@ def update_order_status(order_id, status):
     conn.commit()
     conn.close()
     logging.info(f"Buyurtma holati yangilandi: ID={order_id}, Yangi status={status}")
+
