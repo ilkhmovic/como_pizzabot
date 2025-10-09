@@ -271,7 +271,7 @@ def get_language_keyboard():
 
 def get_cart_keyboard(lang, share_contact=False, share_location=False):
     kb = []
-    
+   
     if share_contact:
         # Telefon raqam so'rash holati
         kb = [[types.KeyboardButton(text=get_text(lang, 'SHARE_CONTACT_BUTTON'), request_contact=True)]]
@@ -281,11 +281,14 @@ def get_cart_keyboard(lang, share_contact=False, share_location=False):
     else:
         # Savatni ko'rish holati
         kb = [
-            [types.KeyboardButton(text=get_text(lang, 'GO_TO_CHECKOUT'))],
-            [types.KeyboardButton(text=get_text(lang, 'CLEAR_CART')), types.KeyboardButton(text=get_text(lang, 'BACK_BUTTON'))]
+            [
+                types.KeyboardButton(text=get_text(lang, 'GO_TO_CHECKOUT')),
+                types.KeyboardButton(text=get_text(lang, 'CLEAR_CART'))
+            ],
+            [types.KeyboardButton(text=get_text(lang, 'BACK_BUTTON'))]
         ]
-        
-    return types.ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
+       
+    return types.ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, one_time_keyboard=True)
 
 def get_order_payment_keyboard(lang):
     """To'lov turini tanlash klaviaturasi (Cash, Click, Payme)"""
@@ -318,6 +321,7 @@ def get_product_inline_keyboard(product_name, current_quantity=1):
     ]
 
     return types.InlineKeyboardMarkup(inline_keyboard=kb)
+
 
 
 
