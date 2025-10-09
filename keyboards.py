@@ -217,18 +217,14 @@ def get_menu_keyboard(lang):
     menus = get_all_menus()  # Bazadan barcha menyularni olish
     keyboard = []
     row = []
-    
-    # Menyularni ikkitadan guruhlash
     for i, menu in enumerate(menus):
-        row.append(KeyboardButton(text=menu))
+        row.append(types.KeyboardButton(text=menu))
         if len(row) == 2 or i == len(menus) - 1:  # Har ikkita tugmadan so'ng yoki oxirgi menyuda
             keyboard.append(row)
             row = []
+    keyboard.append([types.KeyboardButton(text=get_text(lang, 'BACK_BUTTON'))])
     
-    # Orqaga tugmasini oxirgi qatorga qo'shish
-    keyboard.append([KeyboardButton(text=get_text(lang, 'BACK_BUTTON'))])
-    
-    return ReplyKeyboardMarkup(
+    return types.ReplyKeyboardMarkup(
         keyboard=keyboard,
         resize_keyboard=True,
         one_time_keyboard=True
@@ -322,6 +318,7 @@ def get_product_inline_keyboard(product_name, current_quantity=1):
     ]
 
     return types.InlineKeyboardMarkup(inline_keyboard=kb)
+
 
 
 
