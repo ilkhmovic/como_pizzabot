@@ -52,6 +52,66 @@ def get_user_language(user_id):
     user_data = get_user_data(user_id)
     return user_data[4] if user_data and len(user_data) > 4 else 'uz'
 
+# Adminlarga xabar yuborish funksiyasini TO'G'RILASH
+async def send_admin_notification(
+    bot: Bot,
+    order_id: int,
+    user_data: Tuple[Optional[int], Optional[str], Optional[float], Optional[float], Optional[str]],
+    final_sum: float,
+    payment_type: str,
+    status: str
+):
+    """Adminlarga yangi buyurtma haqida xabar yuboradi."""
+    # user_data ni ehtiyotkorlik bilan ochish
+    if user_data and len(user_data) >= 5:
+        user_id, phone_number, lat, lon, user_lang = user_data
+        user_first_name = "Mijoz"  # Standart qiymat
+    else:
+        user_id, phone_number, lat, lon = 0, "Noma'lum", None, None
+        user_lang = 'uz'
+        user_first_name = "Noma'lum mijoz"
+
+    # Buyurtma mahsulotlarini olish
+    items = get_order_items_by_id(order_id)
+
+    # HTML formatida xabar matnini tayyorlash
+    message_text = f"<b>YANGI BUYURTMA №{order_id}</b>\n"
+    message_text += f"<b>Mijoz:</b> {user_first_name}\n"
+    message_text += f"<b>Tel:</b> {phone_number}\n"
+    message_text += f"<b>To'lov turi:</b> {payment_type}\n"
+    message_text += f"<b>Holati:</b> {status}\n\n"
+    message_text += f"<b>Buyurtma ro'yxati:</b>\n"
+    for product_name, quantity, price in items:
+        total_item_price = price * quantity
+        message_text += f"- {product_name}: {quantity} x {int(price)} UZS = {int(total_item_price)} UZS\n"
+    
+    message_text += f"\n<b>Yetkazib berish:</b> {int(DELIVERY_FEE)} UZS\n"
+    message_text += f"<b>Jami:</b> {int(final_sum)} UZS"
+
+    # Manzil havolasini yaratish
+    map_url = ""
+    if lat is not None and lon is not None:
+        map_url = f'<a href="http://maps.google.com/maps?q={lat},{lon}">Manzilni ko\'rish</a>'
+
+    for admin_id in ADMINS:
+        try:
+            # Geolokatsiyani yuborish
+            if lat is not None and lon is not None:
+                await bot.send_location(admin_id, latitude=lat, longitude=lon)
+                await bot.send_message(
+                    chat_id=admin_id,
+                    text=message_text + "\n\n" + map_url,
+                    parse_mode='HTML'
+                )
+            else:
+                await bot.send_message(
+                    chat_id=admin_id,
+                    text=message_text + "\n\n" + "Geolokatsiya mavjud emas.",
+                    parse_mode='HTML'
+                )
+        except Exception as e:
+            logging.error(f"Adminga ({admin_id}) xabar yuborishda xato: {e}")
+
 # Start buyrug'i uchun handler
 @router.message(CommandStart())
 async def handle_start(message: types.Message, state: FSMContext):
@@ -245,7 +305,7 @@ async def handle_cart(message: types.Message, state: FSMContext):
 
     items = get_cart_items(user_id)
     if not items:
-        await message.answer(get_text(user_lang, 'CART_EMPTY'), reply_markup=get_main_keyboard(user_lang))  # get_main_keyboard ga o'zgartirildi
+        await message.answer(get_text(user_lang, 'CART_EMPTY'), reply_markup=get_main_keyboard(user_lang))
         return
 
     total_sum = 0
@@ -477,7 +537,7 @@ async def handle_add_to_cart_callback(callback: types.CallbackQuery, state: FSMC
     quantity = data.get("count", 1)
     add_to_cart(callback.from_user.id, product_name, quantity)
     await callback.message.delete()
-    await callback.message.answer(get_text(user_lang, 'ADD_TO_CART_SUCCESS'), reply_markup=get_menu_keyboard(user_lang))  # Bu yerda get_menu_keyboard saqlanadi
+    await callback.message.answer(get_text(user_lang, 'ADD_TO_CART_SUCCESS'), reply_markup=get_menu_keyboard(user_lang))
     await state.set_state(OrderState.in_menu)
 
 @router.callback_query(F.data == "clear_cart")
@@ -486,7 +546,7 @@ async def handle_clear_cart_callback(callback: types.CallbackQuery):
     await callback.answer(get_text(user_lang, 'CART_CLEARED'))
     clear_cart(callback.from_user.id)
     await callback.message.edit_text(get_text(user_lang, 'CART_CLEARED'), reply_markup=None)
-    await callback.message.answer(get_text(user_lang, 'BACK_TO_MAIN'), reply_markup=get_main_keyboard(user_lang))  # Bu yerda allaqachon get_main_keyboard bor
+    await callback.message.answer(get_text(user_lang, 'BACK_TO_MAIN'), reply_markup=get_main_keyboard(user_lang))
 
 @router.callback_query(F.data == "confirm_order")
 async def handle_confirm_order_callback(callback: types.CallbackQuery, state: FSMContext):
@@ -525,8 +585,7 @@ async def handle_confirm_order_callback(callback: types.CallbackQuery, state: FS
     )
     await state.set_state(OrderConfirmationState.choosing_payment)
 
-# handlers.py faylida Click to'lov qismini yangilang:
-
+# To'lov qismini TO'G'RILASH
 @router.message(OrderConfirmationState.choosing_payment)
 async def process_payment_choice_or_confirm(message: types.Message, state: FSMContext, bot: Bot):
     user_id = message.from_user.id
@@ -549,7 +608,6 @@ async def process_payment_choice_or_confirm(message: types.Message, state: FSMCo
             return
             
     user_data = get_user_data(user_id)
-    user_first_name = message.from_user.first_name
 
     # Handle "Click" payment
     if text == get_text(user_lang, 'PAYMENT_CLICK'):
@@ -559,7 +617,7 @@ async def process_payment_choice_or_confirm(message: types.Message, state: FSMCo
             total_price=final_total, 
             cart_items=cart_items, 
             payment_type='Click',
-            user_first_name=user_first_name,
+            user_first_name=message.from_user.first_name,
             status='Pending'
         )
         bot_username = (await bot.get_me()).username  
@@ -584,6 +642,7 @@ async def process_payment_choice_or_confirm(message: types.Message, state: FSMCo
             reply_markup=keyboard
         )
         
+        # TO'G'RILANGAN: send_admin_notification funksiyasini to'g'ri parametrlar bilan chaqirish
         await send_admin_notification(bot, order_id, user_data, final_total, 'Click', 'Pending')
         
         clear_cart(user_id)
@@ -598,17 +657,17 @@ async def process_payment_choice_or_confirm(message: types.Message, state: FSMCo
             total_price=final_total, 
             cart_items=cart_items, 
             payment_type='Cash',
-            user_first_name=user_first_name,
+            user_first_name=message.from_user.first_name,
             status='New'
         )
         
-        # Notify admins
+        # Notify admins - TO'G'RILANGAN: send_admin_notification funksiyasini to'g'ri parametrlar bilan chaqirish
         await send_admin_notification(bot, order_id, user_data, final_total, 'Cash', 'New')
         
         # Clear cart and inform user
         clear_cart(user_id)
         await message.answer(
-            get_text(user_lang, 'ORDER_CONFIRMED').format(order_id=order_id),
+                        get_text(user_lang, 'ORDER_CONFIRMED').format(order_id=order_id),
             reply_markup=get_main_keyboard(user_lang)
         )
         await state.clear()
@@ -630,6 +689,7 @@ async def process_payment_choice_or_confirm(message: types.Message, state: FSMCo
             get_text(user_lang, 'INVALID_CHOICE_TRY_AGAIN'),
             reply_markup=get_order_payment_keyboard(user_lang)
         )
+
 @router.message(OrderConfirmationState.confirming_order)
 async def handle_confirm_order_message(message: types.Message, state: FSMContext, bot: Bot):
     user_id = message.from_user.id
@@ -649,18 +709,17 @@ async def handle_confirm_order_message(message: types.Message, state: FSMContext
             return
             
         user_data = get_user_data(user_id)
-        user_first_name = message.from_user.first_name
 
         order_id = save_order(
             user_id=user_id, 
             total_price=final_total, 
             cart_items=cart_items, 
             payment_type=payment_method, 
-            user_first_name=user_first_name, 
+            user_first_name=message.from_user.first_name, 
             status='New'
         )
         
-        # Adminga xabar yuborish
+        # Adminga xabar yuborish - TO'G'RILANGAN: send_admin_notification funksiyasini to'g'ri parametrlar bilan chaqirish
         await send_admin_notification(bot, order_id, user_data, final_total, payment_method, 'New')
         
         clear_cart(user_id)
@@ -712,7 +771,7 @@ async def process_delete_menu(message: types.Message, state: FSMContext):
     if delete_menu_from_db(menu_name):
         await message.answer(f"'{menu_name}' muvaffaqiyatli o'chirildi.", reply_markup=get_admin_keyboard(user_lang))
     else:
-                await message.answer(f"'{menu_name}' topilmadi.", reply_markup=get_admin_keyboard(user_lang))
+        await message.answer(f"'{menu_name}' topilmadi.", reply_markup=get_admin_keyboard(user_lang))
     await state.set_state(AdminState.admin_panel)
 
 @router.message(F.text.in_([LANGUAGES['uz']['DELETE_PRODUCT_BUTTON'], LANGUAGES['ru']['DELETE_PRODUCT_BUTTON']]), AdminState.admin_panel)
@@ -802,65 +861,6 @@ async def handle_product_price_entry(message: types.Message, state: FSMContext):
         await message.answer(get_text(user_lang, 'INVALID_PRICE'))
         return
 
-# Adminlarga xabar yuborish funksiyasi
-async def send_admin_notification(
-    bot: Bot,
-    order_id: int,
-    user_data: Tuple[Optional[int], Optional[str], Optional[float], Optional[float], Optional[str]],
-    final_sum: float,
-    payment_type: str,
-    status: str,
-    user_first_name: str
-):
-    """Adminlarga yangi buyurtma haqida xabar yuboradi."""
-    # user_data ni ehtiyotkorlik bilan ochish
-    if user_data and len(user_data) >= 5:
-        user_id, phone_number, lat, lon, user_lang = user_data
-    else:
-        user_id, phone_number, lat, lon = 0, "Noma'lum", None, None
-        user_lang = 'uz'
-
-    # Buyurtma mahsulotlarini olish
-    items = get_order_items_by_id(order_id)
-
-    # HTML formatida xabar matnini tayyorlash
-    message_text = f"<b>YANGI BUYURTMA №{order_id}</b>\n"
-    message_text += f"<b>Mijoz:</b> {user_first_name}\n"
-    message_text += f"<b>Tel:</b> {phone_number}\n"
-    message_text += f"<b>To'lov turi:</b> {payment_type}\n"
-    message_text += f"<b>Holati:</b> {status}\n\n"
-    message_text += f"<b>Buyurtma ro'yxati:</b>\n"
-    for product_name, quantity, price in items:
-        total_item_price = price * quantity
-        message_text += f"- {product_name}: {quantity} x {int(price)} UZS = {int(total_item_price)} UZS\n"
-    
-    message_text += f"\n<b>Yetkazib berish:</b> {int(DELIVERY_FEE)} UZS\n"
-    message_text += f"<b>Jami:</b> {int(final_sum)} UZS"
-
-    # Manzil havolasini yaratish
-    map_url = ""
-    if lat is not None and lon is not None:
-        map_url = f'<a href="http://maps.google.com/maps?q={lat},{lon}">Manzilni ko\'rish</a>'
-
-    for admin_id in ADMINS:
-        try:
-            # Geolokatsiyani yuborish
-            if lat is not None and lon is not None:
-                await bot.send_location(admin_id, latitude=lat, longitude=lon)
-                await bot.send_message(
-                    chat_id=admin_id,
-                    text=message_text + "\n\n" + map_url,
-                    parse_mode='HTML'
-                )
-            else:
-                await bot.send_message(
-                    chat_id=admin_id,
-                    text=message_text + "\n\n" + "Geolokatsiya mavjud emas.",
-                    parse_mode='HTML'
-                )
-        except Exception as e:
-            logging.error(f"Adminga ({admin_id}) xabar yuborishda xato: {e}")
-
 # Qo'shimcha callback handlerlar
 @router.callback_query(F.data.startswith("count_"))
 async def handle_count_update(callback: types.CallbackQuery, state: FSMContext):
@@ -876,15 +876,4 @@ async def handle_unknown_messages(message: types.Message):
     await message.answer(
         "Noto'g'ri buyruq. Iltimos, menyudan tugmalardan foydalaning.",
         reply_markup=get_main_keyboard(user_lang)
-
     )
-
-
-
-
-
-
-
-
-
-
