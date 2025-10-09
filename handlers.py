@@ -561,7 +561,7 @@ async def process_payment_choice_or_confirm(message: types.Message, state: FSMCo
             user_first_name=user_first_name,
             status='Pending'
         )
-        
+        bot_username = (await bot.get_me()).username  
         # Generate Click payment URL
         click_url = (
             "https://my.click.uz/services/pay"
@@ -569,7 +569,7 @@ async def process_payment_choice_or_confirm(message: types.Message, state: FSMCo
             f"&merchant_id={MERCHANT_ID}"
             f"&amount={int(final_total)}"
             f"&transaction_param={order_id}"
-            f"&return_url={WEBHOOK_HOST}"
+            f"&return_url=https://t.me/{bot_username}"
         )
         
         keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
@@ -872,6 +872,7 @@ async def handle_unknown_messages(message: types.Message):
         reply_markup=get_main_keyboard(user_lang)
 
     )
+
 
 
 
