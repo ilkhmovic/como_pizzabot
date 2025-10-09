@@ -802,55 +802,60 @@ async def handle_product_price_entry(message: types.Message, state: FSMContext):
         return
 
 # Adminlarga xabar yuborish funksiyasi
-async def send_admin_notification(bot: Bot, order_id: int, user_data: tuple, final_sum: float, payment_type: str, status: str,user_first_name: str):
+async def send_admin_notification(
+    bot: Bot,
+    order_id: int,
+    user_data: Tuple[Optional[int], Optional[str], Optional[float], Optional[float], Optional[str]],
+    final_sum: float,
+    payment_type: str,
+    status: str,
+    user_first_name: str
+):
     """Adminlarga yangi buyurtma haqida xabar yuboradi."""
-    
     # user_data ni ehtiyotkorlik bilan ochish
     if user_data and len(user_data) >= 5:
-        user_id, phone_number, lat, lon, user_lang = user_data 
+        user_id, phone_number, lat, lon, user_lang = user_data
     else:
-        # Ma'lumot to'liq bo'lmasa, default qiymatlar
         user_id, phone_number, lat, lon = 0, "Noma'lum", None, None
-    
-    user_first_name = user_first_name
+        user_lang = 'uz'
 
     # Buyurtma mahsulotlarini olish
     items = get_order_items_by_id(order_id)
-    
-    message_text = f"**YANGI BUYURTMA №{order_id}**\n"
-    message_text += f"**Mijoz:** {escape_markdown_v2(user_first_name)}\n"
-    message_text += f"**Tel:** {escape_markdown_v2(phone_number)}\n"
-    message_text += f"**To'lov turi:** {escape_markdown_v2(payment_type)}\n"
-    message_text += f"**Holati:** {escape_markdown_v2(status)}\n\n"
-    
-    message_text += f"**Buyurtma ro'yxati:**\n"
+
+    # HTML formatida xabar matnini tayyorlash
+    message_text = f"<b>YANGI BUYURTMA №{order_id}</b>\n"
+    message_text += f"<b>Mijoz:</b> {user_first_name}\n"
+    message_text += f"<b>Tel:</b> {phone_number}\n"
+    message_text += f"<b>To'lov turi:</b> {payment_type}\n"
+    message_text += f"<b>Holati:</b> {status}\n\n"
+    message_text += f"<b>Buyurtma ro'yxati:</b>\n"
     for product_name, quantity, price in items:
-        total_item_price = price * quantity 
-        message_text += f"\\- {escape_markdown_v2(product_name)}: {quantity} x {escape_markdown_v2(int(price))} UZS \\= {escape_markdown_v2(int(total_item_price))} UZS\n"
-        
-    message_text += f"\n**Yetkazib berish:** {int(DELIVERY_FEE)} UZS\n"
-    message_text += f"**Jami:** {escape_markdown_v2(int(final_sum))} UZS"
+        total_item_price = price * quantity
+        message_text += f"- {product_name}: {quantity} x {int(price)} UZS = {int(total_item_price)} UZS\n"
     
+    message_text += f"\n<b>Yetkazib berish:</b> {int(DELIVERY_FEE)} UZS\n"
+    message_text += f"<b>Jami:</b> {int(final_sum)} UZS"
+
     # Manzil havolasini yaratish
     map_url = ""
     if lat is not None and lon is not None:
-        map_url = f"[Manzilni ko'rish](http://maps.google.com/maps?q={lat},{lon})"
+        map_url = f'<a href="http://maps.google.com/maps?q={lat},{lon}">Manzilni ko\'rish</a>'
 
     for admin_id in ADMINS:
         try:
             # Geolokatsiyani yuborish
             if lat is not None and lon is not None:
-                 await bot.send_location(admin_id, latitude=lat, longitude=lon)
-                 await bot.send_message(
+                await bot.send_location(admin_id, latitude=lat, longitude=lon)
+                await bot.send_message(
                     chat_id=admin_id,
                     text=message_text + "\n\n" + map_url,
-                    parse_mode='MarkdownV2'
+                    parse_mode='HTML'
                 )
             else:
-                 await bot.send_message(
+                await bot.send_message(
                     chat_id=admin_id,
-                    text=message_text + "\n\n" + escape_markdown_v2("Geolokatsiya mavjud emas."),
-                    parse_mode='MarkdownV2'
+                    text=message_text + "\n\n" + "Geolokatsiya mavjud emas.",
+                    parse_mode='HTML'
                 )
         except Exception as e:
             logging.error(f"Adminga ({admin_id}) xabar yuborishda xato: {e}")
@@ -872,6 +877,7 @@ async def handle_unknown_messages(message: types.Message):
         reply_markup=get_main_keyboard(user_lang)
 
     )
+
 
 
 
