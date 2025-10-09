@@ -802,7 +802,7 @@ async def handle_product_price_entry(message: types.Message, state: FSMContext):
         return
 
 # Adminlarga xabar yuborish funksiyasi
-async def send_admin_notification(bot: Bot, order_id: int, user_data: tuple, final_sum: float, payment_type: str, status: str):
+async def send_admin_notification(bot: Bot, order_id: int, user_data: tuple, final_sum: float, payment_type: str, status: str,user_first_name: str):
     """Adminlarga yangi buyurtma haqida xabar yuboradi."""
     
     # user_data ni ehtiyotkorlik bilan ochish
@@ -812,7 +812,7 @@ async def send_admin_notification(bot: Bot, order_id: int, user_data: tuple, fin
         # Ma'lumot to'liq bo'lmasa, default qiymatlar
         user_id, phone_number, lat, lon = 0, "Noma'lum", None, None
     
-    user_first_name = message.from_user.first_name
+    user_first_name = user_first_name
 
     # Buyurtma mahsulotlarini olish
     items = get_order_items_by_id(order_id)
@@ -872,6 +872,7 @@ async def handle_unknown_messages(message: types.Message):
         reply_markup=get_main_keyboard(user_lang)
 
     )
+
 
 
 
