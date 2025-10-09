@@ -2,7 +2,7 @@ import sqlite3
 import logging
 from datetime import datetime
 
-DATABASE_NAME = os.getenv('SQLITE_DB_PATH', '/data/bot_data.db')
+DATABASE_NAME = "bot_data.db"
 
 def get_connection():
     return sqlite3.connect(DATABASE_NAME)
@@ -303,4 +303,5 @@ def update_order_status(order_id, status):
     conn.commit()
     conn.close()
     logging.info(f"Buyurtma holati yangilandi: ID={order_id}, Yangi status={status}")
+
 
