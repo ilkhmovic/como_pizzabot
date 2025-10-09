@@ -812,7 +812,7 @@ async def send_admin_notification(bot: Bot, order_id: int, user_data: tuple, fin
         # Ma'lumot to'liq bo'lmasa, default qiymatlar
         user_id, phone_number, lat, lon = 0, "Noma'lum", None, None
     
-    user_first_name = "Mijoz"
+    user_first_name = message.from_user.first_name
 
     # Buyurtma mahsulotlarini olish
     items = get_order_items_by_id(order_id)
@@ -872,6 +872,7 @@ async def handle_unknown_messages(message: types.Message):
         reply_markup=get_main_keyboard(user_lang)
 
     )
+
 
 
 
