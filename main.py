@@ -20,7 +20,7 @@ from itertools import product
 # --- KONFIGURATSIYA ---
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "8201136862:AAH91yLSxrTbpO2LSNZ1lu40BivDVTsQWQ4")
 PORT = int(os.environ.get("PORT", 10000))
-WEBHOOK_HOST = os.environ.get("WEBHOOK_HOST", "https://como-pizzabot1.onrender.com")
+WEBHOOK_HOST = os.environ.get("WEBHOOK_HOST")
 WEBHOOK_PATH = '/webhook'
 WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
 
@@ -499,6 +499,7 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
 
 
 
