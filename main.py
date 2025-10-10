@@ -12,7 +12,7 @@ from datetime import datetime
 from handlers import router
 from db import (
     init_db, get_order_by_id, update_order_status,
-    get_user_data, get_user_language, get_order_items_by_id
+    get_user_data, get_user_language, get_order_items_by_id,save_user_data
 )
 from keyboards import get_main_keyboard, get_text
 from itertools import product
@@ -25,9 +25,9 @@ WEBHOOK_PATH = '/webhook'
 WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
 
 # Click sozlamalari  4krNcqcYdfSpGD
-SECRET_KEY = '4krNcqcYdfSpGD'  # Click tizimidan olingan maxfiy kalit
-SERVICE_ID = '83881'
-MERCHANT_ID = '46627'
+SECRET_KEY =os.environ.get( 'SECRET_KEY' ) # Click tizimidan olingan maxfiy kalit
+SERVICE_ID = os.environ.get( 'SERVICE_ID' )
+MERCHANT_ID = os.environ.get( 'MERCHANT_ID' )
 MERCHANT_USER_ID = '65032'  # Yangi qo'shilgan
 ADMINS = [7798312047, 7720794522]
 
@@ -499,5 +499,6 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
 
 
