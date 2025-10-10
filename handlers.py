@@ -30,7 +30,7 @@ from typing import Tuple, Optional
 
 # Konfiguratsiya
 DELIVERY_FEE = 1000
-ADMINS = [7798312047, 7720794522]
+ADMINS = [7798312047, 7720794522, 8479321173]
 SERVICE_ID = '83881'
 MERCHANT_ID = '46627'
 SECRET_KEY = '4krNcqcYdfSpGD'
@@ -912,3 +912,4 @@ async def handle_unknown_messages(message: types.Message):
         "Noto'g'ri buyruq. Iltimos, menyudan tugmalardan foydalaning.",
         reply_markup=get_main_keyboard(user_lang)
     )
+
