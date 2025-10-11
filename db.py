@@ -1,421 +1,307 @@
-import os
+import sqlite3
 import logging
 from datetime import datetime
-from typing import List, Optional, Dict, Any
-from supabase import create_client, Client
 
-# Supabase ulanish - soddalashtirilgan
-try:
-    url: str = os.environ.get("SUPABASE_URL")
-    key: str = os.environ.get("SUPABASE_KEY")
-    
-    if not url or not key:
-        logging.warning("Supabase URL yoki KEY topilmadi. SQLite ishlatiladi.")
-        USE_SUPABASE = False
-        supabase = None
-    else:
-        # Proxy parametrsiz yaratish
-        supabase: Client = create_client(url, key)
-        USE_SUPABASE = True
-        logging.info("Supabase ga muvaffaqiyatli ulandi")
-        
-except Exception as e:
-    logging.error(f"Supabase ulanish xatosi: {e}")
-    USE_SUPABASE = False
-    supabase = None
+DATABASE_NAME = "bot_data.db"
 
-def execute_query(action, *args, **kwargs):
-    """Query ni bajarish uchun yordamchi funksiya"""
-    if not USE_SUPABASE or supabase is None:
-        raise Exception("Supabase ulanishi mavjud emas")
-    
-    try:
-        return action(*args, **kwargs)
-    except Exception as e:
-        logging.error(f"Query bajarishda xato: {e}")
-        raise
+def get_connection():
+    return sqlite3.connect(DATABASE_NAME)
 
 def init_db():
     """Ma'lumotlar bazasini boshlang'ich sozlash."""
-    if not USE_SUPABASE:
-        logging.warning("Supabase ulanmagan. init_db o'tkazib yuborildi.")
-        return
-        
     try:
-        # Menular mavjudligini tekshirish
-        response = execute_query(
-            lambda: supabase.table("menus").select("menu_name").execute()
-        )
+        conn = get_connection()
+        cursor = conn.cursor()
         
-        if len(response.data) == 0:
-            # Dastlabki ma'lumotlarni qo'shish
-            menus = [
-                {"menu_name": "Fast Food"},
-                {"menu_name": "Ichimliklar"},
-                {"menu_name": "Pitsa"}
-            ]
-            execute_query(
-                lambda: supabase.table("menus").insert(menus).execute()
+        # Jadvallarni yaratish
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                user_id INTEGER PRIMARY KEY,
+                phone_number TEXT,
+                latitude REAL,
+                longitude REAL,
+                language TEXT DEFAULT 'uz'
             )
-            
-            products = [
-                {"product_name": "Burger", "menu_name": "Fast Food", "description": "Mazali burger", "price": 25000},
-                {"product_name": "Cola", "menu_name": "Ichimliklar", "description": "Yaxshi ichimlik", "price": 10000},
-                {"product_name": "Naomi", "menu_name": "Pitsa", "description": "Jejiajbeoqlns", "price": 12000}
-            ]
-            execute_query(
-                lambda: supabase.table("products").insert(products).execute()
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS menus (
+                menu_name TEXT PRIMARY KEY
             )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS products (
+                product_name TEXT PRIMARY KEY,
+                menu_name TEXT,
+                description TEXT,
+                price REAL,
+                FOREIGN KEY (menu_name) REFERENCES menus(menu_name)
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS cart (
+                user_id INTEGER,
+                product_name TEXT,
+                quantity INTEGER,
+                PRIMARY KEY (user_id, product_name)
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS orders (
+                order_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                total_price REAL,
+                created_at TEXT,
+                status TEXT,
+                payment_type TEXT,
+                user_first_name TEXT,
+                FOREIGN KEY (user_id) REFERENCES users(user_id)
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS order_items (
+                order_id INTEGER,
+                product_name TEXT,
+                quantity INTEGER,
+                price REAL,
+                FOREIGN KEY (order_id) REFERENCES orders(order_id)
+            )
+        ''')
+
+        # Dastlabki ma'lumotlarni faqat bo'sh bo'lsa qo'shish
+        cursor.execute("SELECT count(*) FROM menus")
+        if cursor.fetchone()[0] == 0:  # Agar menus jadvali bo'sh bo'lsa
+            cursor.execute("INSERT OR IGNORE INTO menus (menu_name) VALUES ('Fast Food')")
+            cursor.execute("INSERT OR IGNORE INTO menus (menu_name) VALUES ('Ichimliklar')")
+            cursor.execute("INSERT OR IGNORE INTO menus (menu_name) VALUES ('Pitsa')")
+            cursor.execute("INSERT OR IGNORE INTO products (product_name, menu_name, description, price) VALUES (?, ?, ?, ?)",
+                          ('Burger', 'Fast Food', 'Mazali burger', 25000))
+            cursor.execute("INSERT OR IGNORE INTO products (product_name, menu_name, description, price) VALUES (?, ?, ?, ?)",
+                          ('Cola', 'Ichimliklar', 'Yaxshi ichimlik', 10000))
+            cursor.execute("INSERT OR IGNORE INTO products (product_name, menu_name, description, price) VALUES (?, ?, ?, ?)",
+                          ('Naomi', 'Pitsa', 'Jejiajbeoqlns', 12000))
         
+        conn.commit()
         logging.info("Ma'lumotlar bazasi muvaffaqiyatli sozlandi")
-    except Exception as e:
+    except sqlite3.Error as e:
         logging.error(f"Ma'lumotlar bazasini sozlashda xato: {e}")
+        raise
+    finally:
+        conn.close()
 
-def save_user_data(user_id: int, phone_number: str, latitude: float = None, longitude: float = None):
-    if not USE_SUPABASE:
-        return
-        
-    try:
-        data = {
-            "user_id": user_id,
-            "phone_number": phone_number,
-            "latitude": latitude,
-            "longitude": longitude
-        }
-        execute_query(
-            lambda: supabase.table("users").upsert(data).execute()
-        )
-    except Exception as e:
-        logging.error(f"User saqlashda xato: {e}")
+def save_user_data(user_id, phone_number, latitude=None, longitude=None):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("INSERT OR REPLACE INTO users (user_id, phone_number, latitude, longitude) VALUES (?, ?, ?, ?)",
+                   (user_id, phone_number, latitude, longitude))
+    conn.commit()
+    conn.close()
 
-def get_user_data(user_id: int) -> Optional[Dict[str, Any]]:
-    if not USE_SUPABASE:
-        return None
-        
-    try:
-        response = execute_query(
-            lambda: supabase.table("users").select("*").eq("user_id", user_id).execute()
-        )
-        return response.data[0] if response.data else None
-    except Exception as e:
-        logging.error(f"User olishda xato: {e}")
-        return None
+def get_user_data(user_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
+    user = cursor.fetchone()
+    conn.close()
+    return user
 
-def update_user_location(user_id: int, latitude: float, longitude: float):
-    if not USE_SUPABASE:
-        return
-        
-    try:
-        execute_query(
-            lambda: supabase.table("users").update({
-                "latitude": latitude,
-                "longitude": longitude
-            }).eq("user_id", user_id).execute()
-        )
-    except Exception as e:
-        logging.error(f"Location yangilashda xato: {e}")
+def update_user_location(user_id, latitude, longitude):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE users SET latitude = ?, longitude = ? WHERE user_id = ?", (latitude, longitude, user_id))
+    conn.commit()
+    conn.close()
 
-def update_user_language(user_id: int, lang: str):
-    if not USE_SUPABASE:
-        return
-        
-    try:
-        execute_query(
-            lambda: supabase.table("users").update({
-                "language": lang
-            }).eq("user_id", user_id).execute()
-        )
-    except Exception as e:
-        logging.error(f"Language yangilashda xato: {e}")
+def update_user_language(user_id, lang):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE users SET language = ? WHERE user_id = ?", (lang, user_id))
+    conn.commit()
+    conn.close()
 
-def get_user_language(user_id: int) -> str:
-    if not USE_SUPABASE:
-        return "uz"
-        
-    try:
-        response = execute_query(
-            lambda: supabase.table("users").select("language").eq("user_id", user_id).execute()
-        )
-        return response.data[0]["language"] if response.data else "uz"
-    except Exception as e:
-        logging.error(f"Language olishda xato: {e}")
-        return "uz"
+def get_user_language(user_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT language FROM users WHERE user_id = ?", (user_id,))
+    result = cursor.fetchone()
+    conn.close()
+    return result[0] if result else 'uz'
 
-def add_menu_to_db(name: str) -> bool:
-    if not USE_SUPABASE:
-        return False
-        
+def update_user_language_and_save_data(user_id, lang):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("INSERT OR REPLACE INTO users (user_id, language) VALUES (?, ?)", (user_id, lang))
+    conn.commit()
+    conn.close()
+
+def add_menu_to_db(name):
+    conn = get_connection()
+    cursor = conn.cursor()
     try:
-        execute_query(
-            lambda: supabase.table("menus").insert({"menu_name": name}).execute()
-        )
+        cursor.execute("INSERT INTO menus (menu_name) VALUES (?)", (name,))
+        conn.commit()
         return True
-    except Exception as e:
-        logging.error(f"Menu qo'shishda xato: {e}")
+    except sqlite3.IntegrityError:
         return False
+    finally:
+        conn.close()
 
-def get_all_menus() -> List[str]:
-    if not USE_SUPABASE:
-        return []
-        
-    try:
-        response = execute_query(
-            lambda: supabase.table("menus").select("menu_name").execute()
-        )
-        return [item["menu_name"] for item in response.data]
-    except Exception as e:
-        logging.error(f"Menularni olishda xato: {e}")
-        return []
+def get_all_menus():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT menu_name FROM menus")
+    menus = [row[0] for row in cursor.fetchall()]
+    conn.close()
+    return menus
 
-def add_product_to_db(menu_name: str, product_name: str, description: str, price: float) -> bool:
-    if not USE_SUPABASE:
-        return False
-        
+def add_product_to_db(menu_name, product_name, description, price):
+    """Mahsulotni bazaga qo'shadi."""
+    conn = get_connection()
+    cursor = conn.cursor()
     try:
-        # Menu mavjudligini tekshirish
-        menu_response = execute_query(
-            lambda: supabase.table("menus").select("menu_name").eq("menu_name", menu_name).execute()
-        )
-        if not menu_response.data:
+        # menu_name mavjudligini tekshirish
+        cursor.execute("SELECT menu_name FROM menus WHERE menu_name = ?", (menu_name,))
+        if not cursor.fetchone():
             logging.error(f"Menu {menu_name} mavjud emas")
             return False
-        
-        data = {
-            "product_name": product_name,
-            "menu_name": menu_name,
-            "description": description,
-            "price": price
-        }
-        execute_query(
-            lambda: supabase.table("products").insert(data).execute()
-        )
+        cursor.execute("INSERT INTO products (product_name, menu_name, description, price) VALUES (?, ?, ?, ?)",
+                       (product_name, menu_name, description, price))
+        conn.commit()
         logging.info(f"Mahsulot qo'shildi: {product_name}, Menu: {menu_name}")
         return True
-    except Exception as e:
+    except sqlite3.IntegrityError as e:
         logging.error(f"Mahsulot qo'shishda xato: {e}")
         return False
+    finally:
+        conn.close()
 
-def get_products_by_menu(menu_name: str) -> List[str]:
-    if not USE_SUPABASE:
-        return []
-        
-    try:
-        response = execute_query(
-            lambda: supabase.table("products").select("product_name").eq("menu_name", menu_name).execute()
-        )
-        products = [item["product_name"] for item in response.data]
-        logging.info(f"Menu: {menu_name}, Mahsulotlar: {products}")
-        return products
-    except Exception as e:
-        logging.error(f"Mahsulotlarni olishda xato: {e}")
-        return []
+def get_products_by_menu(menu_name):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT product_name FROM products WHERE menu_name = ?", (menu_name,))
+    products = [row[0] for row in cursor.fetchall()]
+    logging.info(f"SQL so'rovi: SELECT product_name FROM products WHERE menu_name = {menu_name}")
+    logging.info(f"Natija: {products}")
+    conn.close()
+    return products
 
-def get_product_details(product_name: str) -> Optional[Dict[str, Any]]:
-    if not USE_SUPABASE:
-        return None
-        
-    try:
-        response = execute_query(
-            lambda: supabase.table("products").select("*").eq("product_name", product_name).execute()
-        )
-        return response.data[0] if response.data else None
-    except Exception as e:
-        logging.error(f"Mahsulot ma'lumotlarini olishda xato: {e}")
-        return None
+def get_product_details(product_name):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT product_name, description, price FROM products WHERE product_name = ?", (product_name,))
+    details = cursor.fetchone()
+    conn.close()
+    return details
 
-def get_product_price(product_name: str) -> float:
+def get_product_price(product_name):
     details = get_product_details(product_name)
-    return details["price"] if details else 0
+    return details[2] if details else 0
 
-def delete_menu_from_db(menu_name: str) -> bool:
-    if not USE_SUPABASE:
-        return False
-        
-    try:
-        # Avval products jadvalidan o'chirish
-        execute_query(
-            lambda: supabase.table("products").delete().eq("menu_name", menu_name).execute()
-        )
-        # Keyin menu ni o'chirish
-        response = execute_query(
-            lambda: supabase.table("menus").delete().eq("menu_name", menu_name).execute()
-        )
-        return len(response.data) > 0
-    except Exception as e:
-        logging.error(f"Menu o'chirishda xato: {e}")
-        return False
+def delete_menu_from_db(menu_name):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM products WHERE menu_name = ?", (menu_name,))
+    cursor.execute("DELETE FROM menus WHERE menu_name = ?", (menu_name,))
+    deleted = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return deleted
 
-def delete_product_from_db(product_name: str) -> bool:
-    if not USE_SUPABASE:
-        return False
-        
-    try:
-        response = execute_query(
-            lambda: supabase.table("products").delete().eq("product_name", product_name).execute()
-        )
-        return len(response.data) > 0
-    except Exception as e:
-        logging.error(f"Mahsulot o'chirishda xato: {e}")
-        return False
+def delete_product_from_db(product_name):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM products WHERE product_name = ?", (product_name,))
+    deleted = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return deleted
 
-def add_to_cart(user_id: int, product_name: str, quantity: int):
-    if not USE_SUPABASE:
-        return
-        
-    try:
-        data = {
-            "user_id": user_id,
-            "product_name": product_name,
-            "quantity": quantity
-        }
-        execute_query(
-            lambda: supabase.table("cart").upsert(data).execute()
-        )
-    except Exception as e:
-        logging.error(f"Cart ga qo'shishda xato: {e}")
+def add_to_cart(user_id, product_name, quantity):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("INSERT OR REPLACE INTO cart (user_id, product_name, quantity) VALUES (?, ?, ?)",
+                   (user_id, product_name, quantity))
+    conn.commit()
+    conn.close()
 
-def get_cart_items(user_id: int) -> List[tuple]:
-    if not USE_SUPABASE:
-        return []
-        
-    try:
-        response = execute_query(
-            lambda: supabase.table("cart").select("product_name, quantity").eq("user_id", user_id).execute()
-        )
-        return [(item["product_name"], item["quantity"]) for item in response.data]
-    except Exception as e:
-        logging.error(f"Cart ni olishda xato: {e}")
-        return []
+def get_cart_items(user_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT product_name, quantity FROM cart WHERE user_id = ?", (user_id,))
+    items = cursor.fetchall()
+    conn.close()
+    return items
 
-def clear_cart(user_id: int):
-    if not USE_SUPABASE:
-        return
-        
-    try:
-        execute_query(
-            lambda: supabase.table("cart").delete().eq("user_id", user_id).execute()
-        )
-    except Exception as e:
-        logging.error(f"Cart ni tozalashda xato: {e}")
+def clear_cart(user_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM cart WHERE user_id = ?", (user_id,))
+    conn.commit()
+    conn.close()
 
-def remove_from_cart(user_id: int, product_name: str):
-    if not USE_SUPABASE:
-        return
-        
-    try:
-        execute_query(
-            lambda: supabase.table("cart").delete().eq("user_id", user_id).eq("product_name", product_name).execute()
-        )
-    except Exception as e:
-        logging.error(f"Cart dan o'chirishda xato: {e}")
+def remove_from_cart(user_id, product_name):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM cart WHERE user_id = ? AND product_name = ?", (user_id, product_name))
+    conn.commit()
+    conn.close()
 
-def save_order(user_id: int, total_price: float, cart_items: List[tuple], payment_type: str, user_first_name: str = "Foydalanuvchi", status: str = 'pending') -> Optional[int]:
-    if not USE_SUPABASE:
-        return None
-        
+def save_order(user_id, total_price, cart_items, payment_type, user_first_name="Foydalanuvchi", status='pending'):
+    conn = get_connection()
+    cursor = conn.cursor()
+    created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
     try:
-        # Order yaratish
-        order_data = {
-            "user_id": user_id,
-            "total_price": total_price,
-            "status": status,
-            "payment_type": payment_type,
-            "user_first_name": user_first_name
-        }
-        order_response = execute_query(
-            lambda: supabase.table("orders").insert(order_data).execute()
-        )
+        cursor.execute("INSERT INTO orders (user_id, total_price, created_at, status, payment_type, user_first_name) VALUES (?, ?, ?, ?, ?, ?)",
+                       (user_id, total_price, created_at, status, payment_type, user_first_name))
+        order_id = cursor.lastrowid
         
-        if order_response.data:
-            order_id = order_response.data[0]["order_id"]
-            
-            # Order items qo'shish
-            for item in cart_items:
-                product_name, quantity = item
-                price = get_product_price(product_name)
-                
-                item_data = {
-                    "order_id": order_id,
-                    "product_name": product_name,
-                    "quantity": quantity,
-                    "price": price
-                }
-                execute_query(
-                    lambda: supabase.table("order_items").insert(item_data).execute()
-                )
-            
-            logging.info(f"Buyurtma saqlandi: ID={order_id}, Status={status}, To'lov={payment_type}")
-            return order_id
+        for item in cart_items:
+            product_name, quantity = item
+            price = get_product_price(product_name)
+            cursor.execute("INSERT INTO order_items (order_id, product_name, quantity, price) VALUES (?, ?, ?, ?)",
+                           (order_id, product_name, quantity, price))
         
-        return None
+        conn.commit()
+        logging.info(f"Buyurtma saqlandi: ID={order_id}, Status={status}, To'lov={payment_type}")
+        return order_id
         
     except Exception as e:
         logging.error(f"Buyurtma saqlash xatosi: {e}")
+        conn.rollback()
         return None
+    finally:
+        conn.close()
 
-def get_user_orders(user_id: int) -> List[tuple]:
-    if not USE_SUPABASE:
-        return []
-        
-    try:
-        response = execute_query(
-            lambda: supabase.table("orders").select("order_id, total_price, created_at").eq("user_id", user_id).order("created_at", desc=True).execute()
-        )
-        return [(order["order_id"], order["total_price"], order["created_at"]) for order in response.data]
-    except Exception as e:
-        logging.error(f"Buyurtmalarni olishda xato: {e}")
-        return []
+def get_user_orders(user_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT order_id, total_price, created_at FROM orders WHERE user_id = ? ORDER BY created_at DESC", (user_id,))
+    orders = cursor.fetchall()
+    conn.close()
+    return orders
 
-def get_order_items_by_id(order_id: int) -> List[tuple]:
-    if not USE_SUPABASE:
-        return []
-        
-    try:
-        response = execute_query(
-            lambda: supabase.table("order_items").select("product_name, quantity, price").eq("order_id", order_id).execute()
-        )
-        return [(item["product_name"], item["quantity"], item["price"]) for item in response.data]
-    except Exception as e:
-        logging.error(f"Buyurtma elementlarini olishda xato: {e}")
-        return []
+def get_order_items_by_id(order_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT product_name, quantity, price FROM order_items WHERE order_id = ?", (order_id,))
+    items = cursor.fetchall()
+    conn.close()
+    return items
 
-def get_order_by_id(order_id: int) -> Optional[Dict[str, Any]]:
-    if not USE_SUPABASE:
-        return None
-        
-    try:
-        response = execute_query(
-            lambda: supabase.table("orders").select("*").eq("order_id", order_id).execute()
-        )
-        return response.data[0] if response.data else None
-    except Exception as e:
-        logging.error(f"Buyurtmani olishda xato: {e}")
-        return None
+def get_order_by_id(order_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM orders WHERE order_id = ?", (order_id,))
+    order = cursor.fetchone()
+    conn.close()
+    return order
 
-def update_order_status(order_id: int, status: str):
-    if not USE_SUPABASE:
-        return
-        
-    try:
-        execute_query(
-            lambda: supabase.table("orders").update({"status": status}).eq("order_id", order_id).execute()
-        )
-        logging.info(f"Buyurtma holati yangilandi: ID={order_id}, Yangi status={status}")
-    except Exception as e:
-        logging.error(f"Buyurtma holatini yangilashda xato: {e}")
+def update_order_status(order_id, status):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE orders SET status = ? WHERE order_id = ?", (status, order_id))
+    conn.commit()
+    conn.close()
+    logging.info(f"Buyurtma holati yangilandi: ID={order_id}, Yangi status={status}")
 
-def update_user_language_and_save_data(user_id: int, lang: str):
-    """Tilni yangilash va user yaratish"""
-    if not USE_SUPABASE:
-        return
-        
-    try:
-        data = {
-            "user_id": user_id,
-            "language": lang
-        }
-        execute_query(
-            lambda: supabase.table("users").upsert(data).execute()
-        )
-    except Exception as e:
-        logging.error(f"User language saqlashda xato: {e}")
+
