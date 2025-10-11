@@ -30,7 +30,7 @@ from typing import Dict, Any
 from typing import Tuple, Optional
 
 # Konfiguratsiya
-DELIVERY_FEE = os.environ.get( 'DELIVERY_FEE' )
+DELIVERY_FEE = os.environ.get(DELIVERY_FEE)
 ADMINS = [7798312047, 7720794522, 8479321173]
 SECRET_KEY =os.environ.get( 'SECRET_KEY' ) # Click tizimidan olingan maxfiy kalit
 SERVICE_ID = os.environ.get( 'SERVICE_ID' )
@@ -913,5 +913,6 @@ async def handle_unknown_messages(message: types.Message):
         "Noto'g'ri buyruq. Iltimos, menyudan tugmalardan foydalaning.",
         reply_markup=get_main_keyboard(user_lang)
     )
+
 
 
