@@ -32,7 +32,7 @@ SECRET_KEY = os.environ.get('SECRET_KEY')
 SERVICE_ID = os.environ.get('SERVICE_ID')
 MERCHANT_ID = os.environ.get('MERCHANT_ID')
 MERCHANT_USER_ID = '65032'
-ADMINS = [7798312047, 7720794522]
+ADMINS = [7798312047, 7720794522,8479321173]
 
 # --- BOT VA DISPATCHER ---
 bot = Bot(token=BOT_TOKEN)
@@ -451,3 +451,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
