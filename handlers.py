@@ -10,14 +10,14 @@ from states import (
 from keyboards import ( 
     get_text, get_main_keyboard, get_menu_keyboard, get_products_keyboard,
     get_admin_keyboard, get_admin_menu_keyboard, get_language_keyboard,
-    get_cart_keyboard, get_order_confirm_keyboard, get_order_payment_keyboard,
+    get_cart_keyboard, get_order_payment_keyboard, get_order_confirm_keyboard,
     get_product_inline_keyboard, 
     LANGUAGES
 )
 from db import ( 
     save_user_data, get_user_data, add_menu_to_db, get_all_menus,
-    add_product_to_db, get_products_by_menu, get_product_details,
-    add_to_cart, get_cart_items, get_product_price, clear_cart,
+    add_product_to_db, get_products_by_menu, get_product_details, get_product_price,
+    add_to_cart, get_cart_items, clear_cart,
     remove_from_cart, save_order, get_user_orders,
     get_order_items_by_id, update_user_location, update_user_language,
     delete_menu_from_db, delete_product_from_db, update_user_language_and_save_data,
@@ -28,16 +28,59 @@ import os
 from hashlib import md5
 from typing import Dict, Any
 from typing import Tuple, Optional
+import math
+from geopy.distance import geodesic
 
 # Konfiguratsiya
-DELIVERY_FEE = float(os.environ.get('DELIVERY_FEE'))
 ADMINS = [7798312047, 7720794522, 8479321173]
-SECRET_KEY =os.environ.get( 'SECRET_KEY' ) # Click tizimidan olingan maxfiy kalit
-SERVICE_ID = os.environ.get( 'SERVICE_ID' )
-MERCHANT_ID = os.environ.get( 'MERCHANT_ID' )
+SECRET_KEY = os.environ.get('SECRET_KEY')
+SERVICE_ID = os.environ.get('SERVICE_ID')
+MERCHANT_ID = os.environ.get('MERCHANT_ID')
 WEBHOOK_HOST = os.environ.get("WEBHOOK_HOST")
 
+# Asosiy joy koordinatalari (o'z joyingiz koordinatalarini qo'ying)
+MAIN_LOCATION = (41.311081, 69.240562)  # Toshkent markazi misol uchun
+
 router = Router()
+
+def calculate_delivery_fee(user_lat, user_lon, cart_total):
+    """
+    Yetkazib berish narxini hisoblaydi.
+    
+    Args:
+        user_lat: Foydalanuvchi kengligi
+        user_lon: Foydalanuvchi uzunligi
+        cart_total: Savatdagi mahsulotlarning umumiy summasi
+    
+    Returns:
+        float: Yetkazib berish narxi
+    """
+    try:
+        # Masofani hisoblash
+        user_location = (user_lat, user_lon)
+        distance = geodesic(MAIN_LOCATION, user_location).kilometers
+        
+        # Yetkazib berish narxini hisoblash
+        if distance <= 4:
+            if cart_total < 100000:
+                return 15000
+            else:
+                return 0  # Tekin
+        else:
+            return 20000
+    except Exception as e:
+        logging.error(f"Yetkazib berish narxini hisoblashda xato: {e}")
+        return 15000  # Standart narx xato yuz bersa
+
+def get_cart_total(user_id):
+    """Savatdagi mahsulotlarning umumiy summasini hisoblaydi"""
+    items = get_cart_items(user_id)
+    total = 0
+    for item in items:
+        product_name, quantity = item
+        price = get_product_price(product_name)
+        total += price * quantity
+    return total
 
 # MarkdownV2 belgilari uchun yordamchi funksiya
 def escape_markdown_v2(text):
@@ -49,7 +92,7 @@ def escape_markdown_v2(text):
     return re.sub(f'([{re.escape(escape_chars)}])', r'\\\1', text)
 
 # Tilni aniqlash uchun yordamchi funksiya
-def get_user_language(user_id):
+def get_user_language_from_db(user_id):
     user_data = get_user_data(user_id)
     return user_data[4] if user_data and len(user_data) > 4 else 'uz'
 
@@ -94,7 +137,11 @@ async def send_admin_notification(
         total_item_price = price * quantity
         message_text += f"- {product_name}: {quantity} x {int(price)} UZS = {int(total_item_price)} UZS\n"
     
-    message_text += f"\n<b>Yetkazib berish:</b> {int(DELIVERY_FEE)} UZS\n"
+    # Yetkazib berish narxini hisoblash
+    cart_total = sum(price * quantity for product_name, quantity, price in items)
+    delivery_fee = calculate_delivery_fee(lat, lon, cart_total) if lat and lon else 15000
+    
+    message_text += f"\n<b>Yetkazib berish:</b> {int(delivery_fee)} UZS\n"
     message_text += f"<b>Jami:</b> {int(final_sum)} UZS"
 
     # Manzil havolasini yaratish
@@ -129,7 +176,7 @@ async def handle_start(message: types.Message, state: FSMContext):
     
     if user_data and user_data[1] is not None:
         # Nomer mavjud bo'lsa, to'g'ridan-to'g'ri asosiy menyuga o'tish
-        user_lang = get_user_language(user_id)
+        user_lang = get_user_language_from_db(user_id)
         await message.answer(get_text(user_lang, 'WELCOME_MESSAGE'), reply_markup=get_main_keyboard(user_lang))
         await state.clear()
     else:
@@ -179,7 +226,7 @@ async def handle_language_choice(message: types.Message, state: FSMContext):
 @router.message(F.contact, OrderState.entering_phone)
 async def handle_contact(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
-    user_lang = get_user_language(user_id)
+    user_lang = get_user_language_from_db(user_id)
     phone_number = message.contact.phone_number
     
     # Nomer saqlash
@@ -192,7 +239,7 @@ async def handle_contact(message: types.Message, state: FSMContext):
 @router.message(F.text.in_([LANGUAGES['uz']['ORDER_BUTTON'], LANGUAGES['ru']['ORDER_BUTTON']]))
 async def handle_order_request(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
-    user_lang = get_user_language(user_id)
+    user_lang = get_user_language_from_db(user_id)
     user_data = get_user_data(user_id)
 
     if user_data and user_data[1] is not None:
@@ -221,15 +268,25 @@ async def handle_order_request(message: types.Message, state: FSMContext):
 @router.message(OrderState.waiting_for_location, F.location)
 async def handle_location_from_order(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
-    user_lang = get_user_language(user_id)
+    user_lang = get_user_language_from_db(user_id)
 
     try:
         latitude = message.location.latitude
         longitude = message.location.longitude
         update_user_location(user_id, latitude, longitude)
         await state.update_data(latitude=latitude, longitude=longitude)
-
-        await message.answer(get_text(user_lang, 'MENU_MESSAGE'), reply_markup=get_menu_keyboard(user_lang))
+        
+        # Masofani hisoblab ko'rsatish
+        distance = geodesic(MAIN_LOCATION, (latitude, longitude)).kilometers
+        delivery_fee = calculate_delivery_fee(latitude, longitude, 0)
+        
+        await message.answer(
+            f"📍 Manzilingiz qabul qilindi!\n"
+            f"📏 Asosiy joygacha masofa: {distance:.1f} km\n"
+            f"🚚 Yetkazib berish narxi: {delivery_fee} UZS\n\n"
+            f"{get_text(user_lang, 'MENU_MESSAGE')}", 
+            reply_markup=get_menu_keyboard(user_lang)
+        )
         await state.set_state(OrderState.in_menu)
     except Exception as e:
         logging.error(f"Geolokatsiya saqlashda xato: {e}")
@@ -241,13 +298,13 @@ async def handle_location_from_order(message: types.Message, state: FSMContext):
 
 @router.message(F.text.in_([LANGUAGES['uz']['BACK_BUTTON'], LANGUAGES['ru']['BACK_BUTTON']]), OrderState.waiting_for_location)
 async def handle_back_from_location(message: types.Message, state: FSMContext):
-    user_lang = get_user_language(message.from_user.id)
+    user_lang = get_user_language_from_db(message.from_user.id)
     await message.answer(get_text(user_lang, 'BACK_TO_MAIN'), reply_markup=get_main_keyboard(user_lang))
     await state.clear()
 
 @router.message(OrderState.waiting_for_location)
 async def handle_invalid_location(message: types.Message, state: FSMContext):
-    user_lang = get_user_language(message.from_user.id)
+    user_lang = get_user_language_from_db(message.from_user.id)
     await message.answer(
         get_text(user_lang, 'REQUEST_LOCATION_MESSAGE'),
         reply_markup=types.ReplyKeyboardMarkup(
@@ -261,13 +318,13 @@ async def handle_invalid_location(message: types.Message, state: FSMContext):
 
 @router.message(F.text.in_([LANGUAGES['uz']['BACK_BUTTON'], LANGUAGES['ru']['BACK_BUTTON']]), OrderState.in_menu)
 async def handle_back(message: types.Message, state: FSMContext):
-    user_lang = get_user_language(message.from_user.id)
+    user_lang = get_user_language_from_db(message.from_user.id)
     await message.answer(get_text(user_lang, 'BACK_TO_MAIN'), reply_markup=get_main_keyboard(user_lang))
     await state.clear()
 
 @router.message(F.text.in_([LANGUAGES['uz']['ABOUT_US_BUTTON'], LANGUAGES['ru']['ABOUT_US_BUTTON']]))
 async def handle_about_us(message: types.Message):
-    user_lang = get_user_language(message.from_user.id)
+    user_lang = get_user_language_from_db(message.from_user.id)
     about_text = (
         f"**{escape_markdown_v2(get_text(user_lang, 'ABOUT_US_BUTTON'))}**\n\n"
         f"{escape_markdown_v2(get_text(user_lang, 'ABOUT_US_MESSAGE'))}\n\n"
@@ -280,7 +337,7 @@ async def handle_about_us(message: types.Message):
 
 @router.message(F.text.in_([LANGUAGES['uz']['FEEDBACK_BUTTON'], LANGUAGES['ru']['FEEDBACK_BUTTON']]))
 async def handle_feedback_request(message: types.Message, state: FSMContext):
-    user_lang = get_user_language(message.from_user.id)
+    user_lang = get_user_language_from_db(message.from_user.id)
     await message.answer(
         get_text(user_lang, 'FEEDBACK_REQUEST'),
         reply_markup=types.ReplyKeyboardRemove()
@@ -289,7 +346,7 @@ async def handle_feedback_request(message: types.Message, state: FSMContext):
 
 @router.message(FeedbackState.entering_feedback)
 async def handle_feedback_entry(message: types.Message, state: FSMContext, bot: Bot):
-    user_lang = get_user_language(message.from_user.id)
+    user_lang = get_user_language_from_db(message.from_user.id)
     feedback_text = escape_markdown_v2(message.text)
     user_info = f"Foydalanuvchi: {escape_markdown_v2(message.from_user.full_name)}\nID: `{message.from_user.id}`"
 
@@ -310,7 +367,7 @@ async def handle_feedback_entry(message: types.Message, state: FSMContext, bot: 
 @router.message(F.text.in_([LANGUAGES['uz']['CART_BUTTON'], LANGUAGES['ru']['CART_BUTTON']]))
 async def handle_cart(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
-    user_lang = get_user_language(user_id)
+    user_lang = get_user_language_from_db(user_id)
 
     items = get_cart_items(user_id)
     if not items:
@@ -327,7 +384,19 @@ async def handle_cart(message: types.Message, state: FSMContext):
         total_sum += total
         text += f"*{escape_markdown_v2(product_name)}* {quantity} x {int(price)} \\= {int(total)} UZS\n"
 
-    text += f"\n**Umumiy narx**: {escape_markdown_v2(total_sum)} UZS"
+    # Yetkazib berish narxini hisoblash va ko'rsatish
+    user_data = get_user_data(user_id)
+    delivery_fee = 0
+    if user_data and user_data[2] and user_data[3]:
+        delivery_fee = calculate_delivery_fee(user_data[2], user_data[3], total_sum)
+    else:
+        delivery_fee = 15000  # Standart narx
+    
+    final_total = total_sum + delivery_fee
+    
+    text += f"\n**Mahsulotlar jami**: {escape_markdown_v2(total_sum)} UZS"
+    text += f"\n**Yetkazib berish**: {escape_markdown_v2(delivery_fee)} UZS"
+    text += f"\n**Umumiy summa**: {escape_markdown_v2(final_total)} UZS"
 
     keyboard = types.InlineKeyboardMarkup(
         inline_keyboard=[
@@ -343,7 +412,7 @@ async def handle_cart(message: types.Message, state: FSMContext):
 @router.message(F.text.in_([LANGUAGES['uz']['MY_ORDERS_BUTTON'], LANGUAGES['ru']['MY_ORDERS_BUTTON']]))
 async def handle_my_orders(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
-    user_lang = get_user_language(user_id)
+    user_lang = get_user_language_from_db(user_id)
     
     orders = get_user_orders(user_id)
 
@@ -367,7 +436,7 @@ async def handle_my_orders(message: types.Message, state: FSMContext):
 @router.callback_query(F.data.startswith("view_order_"))
 async def handle_view_single_order(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
-    user_lang = get_user_language(callback.from_user.id)
+    user_lang = get_user_language_from_db(callback.from_user.id)
     try:
         order_id = int(callback.data.split('_')[2]) 
     except (IndexError, ValueError):
@@ -400,7 +469,7 @@ async def handle_view_single_order(callback: types.CallbackQuery, state: FSMCont
 @router.callback_query(F.data == "back_to_my_orders")
 async def handle_back_to_orders(callback: types.CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
-    user_lang = get_user_language(user_id)
+    user_lang = get_user_language_from_db(user_id)
     await callback.answer()
     
     orders = get_user_orders(user_id)
@@ -426,14 +495,14 @@ async def handle_back_to_orders(callback: types.CallbackQuery, state: FSMContext
 @router.callback_query(F.data == "back_to_main")
 async def handle_back_to_main(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
-    user_lang = get_user_language(callback.from_user.id)
+    user_lang = get_user_language_from_db(callback.from_user.id)
     await state.clear()
     await callback.message.edit_text(get_text(user_lang, 'BACK_TO_MAIN'), reply_markup=None)
     await callback.message.answer(get_text(user_lang, 'BACK_TO_MAIN'), reply_markup=get_main_keyboard(user_lang))
 
 @router.message(OrderState.in_menu)
 async def handle_menu_selection(message: types.Message, state: FSMContext):
-    user_lang = get_user_language(message.from_user.id)
+    user_lang = get_user_language_from_db(message.from_user.id)
     menu_name = message.text
     if menu_name in get_all_menus():
         await state.update_data(selected_menu=menu_name)
@@ -445,13 +514,13 @@ async def handle_menu_selection(message: types.Message, state: FSMContext):
 
 @router.message(F.text.in_([LANGUAGES['uz']['BACK_BUTTON'], LANGUAGES['ru']['BACK_BUTTON']]), MenuState.in_category)
 async def handle_back_from_products(message: types.Message, state: FSMContext):
-    user_lang = get_user_language(message.from_user.id)
+    user_lang = get_user_language_from_db(message.from_user.id)
     await message.answer(get_text(user_lang, 'BACK_TO_MAIN'), reply_markup=get_menu_keyboard(user_lang))
     await state.set_state(OrderState.in_menu)
 
 @router.message(MenuState.in_category)
 async def handle_product_selection(message: types.Message, state: FSMContext):
-    user_lang = get_user_language(message.from_user.id)
+    user_lang = get_user_language_from_db(message.from_user.id)
     product_name = message.text
     product_data = get_product_details(product_name)
 
@@ -483,7 +552,7 @@ async def handle_product_selection(message: types.Message, state: FSMContext):
 @router.callback_query(F.data.startswith("inc_"))
 async def handle_inc_quantity(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
-    user_lang = get_user_language(callback.from_user.id)
+    user_lang = get_user_language_from_db(callback.from_user.id)
     data = await state.get_data()
     current_count = data.get("count", 1)
     product_name = data.get("product_name")
@@ -510,7 +579,7 @@ async def handle_inc_quantity(callback: types.CallbackQuery, state: FSMContext):
 @router.callback_query(F.data.startswith("dec_"))
 async def handle_dec_quantity(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
-    user_lang = get_user_language(callback.from_user.id)
+    user_lang = get_user_language_from_db(callback.from_user.id)
     data = await state.get_data()
     current_count = data.get("count", 1)
     product_name = data.get("product_name")
@@ -540,7 +609,7 @@ async def handle_dec_quantity(callback: types.CallbackQuery, state: FSMContext):
 @router.callback_query(F.data.startswith("add_to_cart_"))
 async def handle_add_to_cart_callback(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
-    user_lang = get_user_language(callback.from_user.id)
+    user_lang = get_user_language_from_db(callback.from_user.id)
     data = await state.get_data()
     product_name = data.get("product_name")
     quantity = data.get("count", 1)
@@ -551,7 +620,7 @@ async def handle_add_to_cart_callback(callback: types.CallbackQuery, state: FSMC
 
 @router.callback_query(F.data == "clear_cart")
 async def handle_clear_cart_callback(callback: types.CallbackQuery):
-    user_lang = get_user_language(callback.from_user.id)
+    user_lang = get_user_language_from_db(callback.from_user.id)
     await callback.answer(get_text(user_lang, 'CART_CLEARED'))
     clear_cart(callback.from_user.id)
     await callback.message.edit_text(get_text(user_lang, 'CART_CLEARED'), reply_markup=None)
@@ -561,7 +630,7 @@ async def handle_clear_cart_callback(callback: types.CallbackQuery):
 async def handle_confirm_order_callback(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
     user_id = callback.from_user.id
-    user_lang = get_user_language(user_id)
+    user_lang = get_user_language_from_db(user_id)
     
     user_data = get_user_data(user_id)
     # Telefon va Manzil tekshiruvi
@@ -583,10 +652,12 @@ async def handle_confirm_order_callback(callback: types.CallbackQuery, state: FS
         await state.clear()
         return
 
-    total_sum = sum(get_product_price(item[0]) * item[1] for item in cart_items)
-    final_total = total_sum + DELIVERY_FEE
+    # Yetkazib berish narxini hisoblash
+    cart_total = get_cart_total(user_id)
+    delivery_fee = calculate_delivery_fee(user_data[2], user_data[3], cart_total)
+    final_total = cart_total + delivery_fee
     
-    await state.update_data(final_total_price=final_total)
+    await state.update_data(final_total_price=final_total, delivery_fee=delivery_fee)
 
     await callback.message.answer(
         get_text(user_lang, 'CHOOSE_PAYMENT'), 
@@ -598,19 +669,25 @@ async def handle_confirm_order_callback(callback: types.CallbackQuery, state: FS
 @router.message(OrderConfirmationState.choosing_payment)
 async def process_payment_choice_or_confirm(message: types.Message, state: FSMContext, bot: Bot):
     user_id = message.from_user.id
-    user_lang = get_user_language(user_id)
+    user_lang = get_user_language_from_db(user_id)
     text = message.text
     data = await state.get_data()
     
     # Check if cart and total price are valid
     final_total = data.get('final_total_price')
+    delivery_fee = data.get('delivery_fee', 0)
     cart_items = get_cart_items(user_id)
     
     if final_total is None or not cart_items:
         if cart_items:
-            total_sum = sum(get_product_price(item[0]) * item[1] for item in cart_items)
-            final_total = total_sum + DELIVERY_FEE
-            await state.update_data(final_total_price=final_total)
+            cart_total = get_cart_total(user_id)
+            user_data = get_user_data(user_id)
+            if user_data and user_data[2] and user_data[3]:
+                delivery_fee = calculate_delivery_fee(user_data[2], user_data[3], cart_total)
+            else:
+                delivery_fee = 15000  # Standart narx
+            final_total = cart_total + delivery_fee
+            await state.update_data(final_total_price=final_total, delivery_fee=delivery_fee)
         else:
             await message.answer(get_text(user_lang, 'CART_EMPTY'), reply_markup=get_main_keyboard(user_lang))
             await state.clear()
@@ -720,7 +797,7 @@ async def process_payment_choice_or_confirm(message: types.Message, state: FSMCo
 @router.message(OrderConfirmationState.confirming_order)
 async def handle_confirm_order_message(message: types.Message, state: FSMContext, bot: Bot):
     user_id = message.from_user.id
-    user_lang = get_user_language(user_id)
+    user_lang = get_user_language_from_db(user_id)
     text = message.text
     data = await state.get_data()
     
@@ -781,7 +858,7 @@ async def handle_confirm_order_message(message: types.Message, state: FSMContext
 # Admin paneli handlerlari
 @router.message(Command("admin"))
 async def handle_admin(message: types.Message, state: FSMContext):
-    user_lang = get_user_language(message.from_user.id)
+    user_lang = get_user_language_from_db(message.from_user.id)
     if message.from_user.id in ADMINS:
         await message.answer(get_text(user_lang, 'ADMIN_WELCOME_MESSAGE'), reply_markup=get_admin_keyboard(user_lang))
         await state.set_state(AdminState.admin_panel)
@@ -790,19 +867,19 @@ async def handle_admin(message: types.Message, state: FSMContext):
 
 @router.message(F.text.in_([LANGUAGES['uz']['ADMIN_PANEL_BACK_BUTTON'], LANGUAGES['ru']['ADMIN_PANEL_BACK_BUTTON']]), AdminState.admin_panel)
 async def handle_admin_back(message: types.Message, state: FSMContext):
-    user_lang = get_user_language(message.from_user.id)
+    user_lang = get_user_language_from_db(message.from_user.id)
     await message.answer(get_text(user_lang, 'BACK_TO_MAIN'), reply_markup=get_main_keyboard(user_lang))
     await state.clear()
 
 @router.message(F.text.in_([LANGUAGES['uz']['DELETE_MENU_BUTTON'], LANGUAGES['ru']['DELETE_MENU_BUTTON']]), AdminState.admin_panel)
 async def handle_delete_menu(message: types.Message, state: FSMContext):
-    user_lang = get_user_language(message.from_user.id)
+    user_lang = get_user_language_from_db(message.from_user.id)
     await message.answer("O'chirmoqchi bo'lgan menyuni tanlang:", reply_markup=get_admin_menu_keyboard(user_lang))
     await state.set_state(AdminState.deleting_menu)
 
 @router.message(AdminState.deleting_menu)
 async def process_delete_menu(message: types.Message, state: FSMContext):
-    user_lang = get_user_language(message.from_user.id)
+    user_lang = get_user_language_from_db(message.from_user.id)
     menu_name = message.text
     if delete_menu_from_db(menu_name):
         await message.answer(f"'{menu_name}' muvaffaqiyatli o'chirildi.", reply_markup=get_admin_keyboard(user_lang))
@@ -812,13 +889,13 @@ async def process_delete_menu(message: types.Message, state: FSMContext):
 
 @router.message(F.text.in_([LANGUAGES['uz']['DELETE_PRODUCT_BUTTON'], LANGUAGES['ru']['DELETE_PRODUCT_BUTTON']]), AdminState.admin_panel)
 async def handle_delete_product(message: types.Message, state: FSMContext):
-    user_lang = get_user_language(message.from_user.id)
+    user_lang = get_user_language_from_db(message.from_user.id)
     await message.answer("O'chirmoqchi bo'lgan mahsulot nomini kiriting:", reply_markup=types.ReplyKeyboardRemove())
     await state.set_state(AdminState.deleting_product)
 
 @router.message(AdminState.deleting_product)
 async def process_delete_product(message: types.Message, state: FSMContext):
-    user_lang = get_user_language(message.from_user.id)
+    user_lang = get_user_language_from_db(message.from_user.id)
     product_name = message.text
     if delete_product_from_db(product_name):
         await message.answer(f"'{product_name}' muvaffaqiyatli o'chirildi.", reply_markup=get_admin_keyboard(user_lang))
@@ -828,13 +905,13 @@ async def process_delete_product(message: types.Message, state: FSMContext):
 
 @router.message(F.text.in_([LANGUAGES['uz']['ADD_MENU_BUTTON'], LANGUAGES['ru']['ADD_MENU_BUTTON']]), AdminState.admin_panel)
 async def handle_add_menu(message: types.Message, state: FSMContext):
-    user_lang = get_user_language(message.from_user.id)
+    user_lang = get_user_language_from_db(message.from_user.id)
     await message.answer(get_text(user_lang, 'ENTER_MENU_NAME'))
     await state.set_state(AdminState.adding_menu)
 
 @router.message(AdminState.adding_menu)
 async def process_new_menu(message: types.Message, state: FSMContext):
-    user_lang = get_user_language(message.from_user.id)
+    user_lang = get_user_language_from_db(message.from_user.id)
     menu_name = message.text
     if add_menu_to_db(menu_name):
         text = f"'{escape_markdown_v2(menu_name)}' {escape_markdown_v2(get_text(user_lang, 'MENU_ADDED'))}"
@@ -845,13 +922,13 @@ async def process_new_menu(message: types.Message, state: FSMContext):
 
 @router.message(F.text.in_([LANGUAGES['uz']['ADD_PRODUCT_BUTTON'], LANGUAGES['ru']['ADD_PRODUCT_BUTTON']]), AdminState.admin_panel)
 async def handle_add_product(message: types.Message, state: FSMContext):
-    user_lang = get_user_language(message.from_user.id)
+    user_lang = get_user_language_from_db(message.from_user.id)
     await message.answer("Mahsulot qo'shish uchun menyuni tanlang:", reply_markup=get_admin_menu_keyboard(user_lang))
     await state.set_state(AdminState.choosing_menu_for_product)
 
 @router.message(AdminState.choosing_menu_for_product)
 async def handle_menu_for_product(message: types.Message, state: FSMContext):
-    user_lang = get_user_language(message.from_user.id)
+    user_lang = get_user_language_from_db(message.from_user.id)
     menu_name = message.text
     menus = get_all_menus()
     if menu_name in menus:
@@ -864,7 +941,7 @@ async def handle_menu_for_product(message: types.Message, state: FSMContext):
 
 @router.message(AdminState.entering_product_name)
 async def handle_product_name_entry(message: types.Message, state: FSMContext):
-    user_lang = get_user_language(message.from_user.id)
+    user_lang = get_user_language_from_db(message.from_user.id)
     product_name = message.text
     await state.update_data(product_name=product_name)
     await message.answer(get_text(user_lang, 'ENTER_DESCRIPTION'))
@@ -872,7 +949,7 @@ async def handle_product_name_entry(message: types.Message, state: FSMContext):
 
 @router.message(AdminState.entering_product_description)
 async def handle_product_description_entry(message: types.Message, state: FSMContext):
-    user_lang = get_user_language(message.from_user.id)
+    user_lang = get_user_language_from_db(message.from_user.id)
     description = message.text
     await state.update_data(description=description)
     await message.answer(get_text(user_lang, 'ENTER_PRICE'))
@@ -880,7 +957,7 @@ async def handle_product_description_entry(message: types.Message, state: FSMCon
 
 @router.message(AdminState.entering_product_price)
 async def handle_product_price_entry(message: types.Message, state: FSMContext):
-    user_lang = get_user_language(message.from_user.id)
+    user_lang = get_user_language_from_db(message.from_user.id)
     try:
         price = float(message.text)
         data = await state.get_data()
@@ -908,13 +985,8 @@ async def handle_count_update(callback: types.CallbackQuery, state: FSMContext):
 @router.message()
 async def handle_unknown_messages(message: types.Message):
     """Noma'lum xabarlarni qayta ishlash"""
-    user_lang = get_user_language(message.from_user.id)
+    user_lang = get_user_language_from_db(message.from_user.id)
     await message.answer(
         "Noto'g'ri buyruq. Iltimos, menyudan tugmalardan foydalaning.",
         reply_markup=get_main_keyboard(user_lang)
     )
-
-
-
-
-
