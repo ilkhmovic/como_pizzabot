@@ -39,7 +39,7 @@ MERCHANT_ID = os.environ.get('MERCHANT_ID')
 WEBHOOK_HOST = os.environ.get("WEBHOOK_HOST")
 
 # Asosiy joy koordinatalari (o'z joyingiz koordinatalarini qo'ying)
-MAIN_LOCATION = (41.3654169, 69.3000834)  # Toshkent markazi misol uchun
+MAIN_LOCATION = (41.325256, 69.274786)  # Toshkent markazi misol uchun
 
 router = Router()
 
@@ -990,4 +990,5 @@ async def handle_unknown_messages(message: types.Message):
         "Noto'g'ri buyruq. Iltimos, menyudan tugmalardan foydalaning.",
         reply_markup=get_main_keyboard(user_lang)
     )
+
 
